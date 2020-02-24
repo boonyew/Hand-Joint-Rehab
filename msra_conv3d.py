@@ -1,17 +1,6 @@
-# -*- coding: utf-8 -*-
-"""
-Created on Thu Feb 13 16:22:23 2020
-
-@author: angbo
-"""
-
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
-"""
-Created on Wed Feb 12 17:36:22 2020
 
-@author: astroboon
-"""
 
 import numpy as np
 import cv2
