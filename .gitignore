@@ -4,3 +4,10 @@ new
 result
 npy
 *__pycache__
+images
+
+# Model files
+*.csv
+*.hdf5
+*pkl
+*npy

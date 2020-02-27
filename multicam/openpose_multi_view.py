@@ -32,6 +32,18 @@ from helper_functions import get_boundary_corners_2D
 
 # Import Openpose (Windows/Ubuntu/OSX)
 dir_path = os.path.dirname(os.path.realpath(__file__))
+bbox = {}
+bbox['821212062729'] = [155.,60.,350.,350.]
+bbox['851112060943'] = [100.,40.,350.,350.]
+bbox['851112062097'] = [140.,25.,350.,350.]
+
+intrinsics = np.array([[628.668,0.,311.662],
+                       [0.,628.668,231.571],
+                       [0.,  0.  ,1.]])
+
+if not os.path.exists('images'):
+    os.makedirs('images')
+
 try:
     # Windows Import
     if platform == "win32":
@@ -83,13 +95,13 @@ opWrapper.configure(params)
 opWrapper.start()
 datum = op.Datum()
 
-def predict_keypoints(color_image):
+def predict_keypoints(color_image,rect):
     imageToProcess = color_image
     handRectangles = [
         # Left/Right hands person 0
         [
         op.Rectangle(0., 0., 0., 0.),
-        op.Rectangle(100., 100., 480., 480.),
+        op.Rectangle(rect[0], rect[1], rect[2], rect[3]),
         ]
     ]
     
@@ -105,6 +117,86 @@ def predict_keypoints(color_image):
     # print("Right hand keypoints: \n" + str(datum.handKeypoints[1]))
     # cv2.imshow("OpenPose 1.5.1 - Tutorial Python API", datum.cvOutputData)      
     return(datum.handKeypoints[1],datum.cvOutputData)
+def draw_pose(pose):
+    img = np.zeros((480,640))
+    sketch = [(0, 1), (1, 2), (2, 3), (3, 4), (0, 5), (5, 6), (6, 7), (7, 8),
+                (0, 9), (9, 10), (10, 11), (11, 12), (0, 13), (13, 14), (14, 15), (15, 16),
+                (0, 17), (17, 18), (18, 19), (19, 20)]
+    idx = 0
+    #plt.figure()
+    for pt in pose:
+        cv2.circle(img, (int(pt[0]), int(pt[1])), 5, idx, -1)
+        #plt.scatter(pt[0], pt[1], pt[2])
+        idx = idx + 1
+    idx = 0
+    for x, y in sketch:
+        cv2.line(img, (int(pose[x, 0]), int(pose[x, 1])),
+                 (int(pose[y, 0]), int(pose[y, 1])), 5, 2)
+        idx = idx + 1
+    #plt.show()
+    return img
+
+def find3dpoints_rt(cameras,threshold,img,undistort=False):
+    points3d = []
+    cams = list(cameras.keys())
+    for jdx in range(21):
+        flag,points = find3dpoint(cameras,threshold,img,jdx)
+        if flag:
+            points3d[img].append(points)
+    if len(points3d[img]) < 21:
+        points3d = 'Invalid Frame'
+    else:
+        points3d = np.array(points3d)
+    return points3d
+
+def find3dpoints(cameras,threshold,undistort=False):
+    points3d = {}
+    cams = list(cameras.keys())
+    frames = len(cameras[cams[0]].keys())-1
+    for img in range(frames-1):
+        points3d[img] = []
+        for jdx in range(21):
+            flag,points = find3dpoint(cameras,threshold,img,jdx)
+            if flag:
+                points3d[img].append(points)
+        if len(points3d[img]) >= 21:
+            points3d[img] = np.vstack(points3d[img])
+        else:
+            points3d[img] = 'Invalid Frame'
+    return points3d
+
+def find3dpoint(cameras,threshold,img,jdx,undistort=False):
+    """Find 3D coordinate using all data given
+    Implements a linear triangulation method to find a 3D
+    point. For example, see Hartley & Zisserman section 12.2
+    (p.312).
+    By default, this function will undistort 2D points before
+    finding a 3D point.
+    """
+    # for info on SVD, see Hartley & Zisserman (2003) p. 593 (see
+    # also p. 587)
+    # Construct matrices
+    A=[]
+    for name in cameras:
+        cam = cameras[name]
+#            if undistort:
+#                xy = cam.undistort( [xy] )
+        Pmat = cam['proj']
+        row2 = Pmat[2,:]
+        x,y,c = cam[img][0][jdx]
+        if c >= threshold:
+            A.append( x*row2 - Pmat[0,:] )
+            A.append( y*row2 - Pmat[1,:] )
+
+    # Calculate best point
+    if len(A) < 4:
+#        print('Invalid point')
+        return False,0
+    else:
+        A=np.array(A)
+        u,d,vt=np.linalg.svd(A)
+        X = vt[-1,0:3]/vt[-1,3] # normalize
+        return True, X
 
 def calibrateCameras(align,device_manager,frames,chessboard_params):
 
@@ -145,7 +237,7 @@ def calibrateCameras(align,device_manager,frames,chessboard_params):
         cameras[device]={}
         cameras[device]['matrix'] = transformation_devices[device].pose_mat
         np.save('camera_matrix_{}'.format(str(device)),transformation_devices[device].pose_mat)
-
+        cameras[device]['proj'] = np.matmul(intrinsics,cameras[device]['matrix'][0:3,:])
     # Extract the bounds between which the object's dimensions are needed
     # It is necessary for this demo that the object's length and breath is smaller than that of the chessboard
     chessboard_points_cumulative_3d = np.delete(chessboard_points_cumulative_3d, 0, 1)
@@ -193,7 +285,6 @@ def run_demo():
         chessboard_params = [chessboard_height, chessboard_width, square_size] 
         cameras = calibrateCameras(align,device_manager,frames,chessboard_params)
 
-        
         """
         2. Run OpenPose on each view frame
 
@@ -216,7 +307,7 @@ def run_demo():
         depth_list = {}
         color_list = {}
         frame_id = 0
-        
+        points = {}
         # Continue acquisition until terminated with Ctrl+C by the user
         while 1:
              # Get the frames from all the devices
@@ -236,19 +327,22 @@ def run_demo():
                     depth_list[i].append(np.array(temp))
                     depth_colormap = cv2.applyColorMap(cv2.convertScaleAbs(temp, alpha=0.03), cv2.COLORMAP_JET)
                     depth_color.append(depth_colormap)
+                    cv2.imwrite('./images/depth_{}_{}.png'.format(i,frame_id),temp)
                     
                     # 2. Run OpenPose detector on image
-                    joints,img = predict_keypoints(maps[i]['color'])
+                    joints,img = predict_keypoints(maps[i]['color'],bbox[i])
                     
                     # 3. Save annotated color image for display
                     color.append(img)
                     
                     color_list.setdefault(i,[])
                     color_list[i].append(img)
-                    
+                    cv2.imwrite('./images/color_{}_{}.png'.format(i,frame_id),img)
                     # 4. Save keypoints for that camera viewpoint
                     cameras[i][frame_id] = joints
-                    
+
+                #Triangulate 3d keypoints
+                points[frame_id] = find3dpoints(cameras,0.2,frame_id)
                 frame_id += 1    
                 images = np.vstack((np.hstack(color),np.hstack(depth_color)))
 
@@ -256,6 +350,7 @@ def run_demo():
                 cv2.namedWindow('RealSense', cv2.WINDOW_AUTOSIZE)
                 cv2.imshow('RealSense', images)
                 key = cv2.waitKey(1)
+                
                 
                 # Press esc or 'q' to close the image window
                 if key & 0xFF == ord('q') or key == 27:
@@ -270,6 +365,8 @@ def run_demo():
         cv2.destroyAllWindows()
         cam_pkl = open('cameras.pkl','wb')
         pkl.dump(cameras,cam_pkl)
+        points_pkl = open('3dpoints.pkl','wb')
+        pkl.dump(points,points_pkl)
 #        for i in keypoints:
 #            k = np.array(keypoints[i])
 #            np.save('joints_{}.npy'.format(i),k)
