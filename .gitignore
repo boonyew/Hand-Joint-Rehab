@@ -9,5 +9,5 @@ images
 # Model files
 *.csv
 *.hdf5
-*pkl
+*.pkl
 *npy

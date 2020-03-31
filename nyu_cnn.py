@@ -159,7 +159,8 @@ def resizeJoints(joints,left,right,top,bottom,center):
     
     labelOutputs[:,1] = label_xy[:,1]
     labelOutputs[:,0] = label_xy[:,0] 
-    labelOutputs[:,2] = joints[:,2]  - center[2]
+    labelOutputs[:,2] = joints[:,2] - center[2]
+#    labelOutputs[:,2] = (keypointsUVD[index,:,2] - center[2])
 #    labelOutputs[:,1] = abs(labelOutputs[:,1]-cropHeight)
     labelOutputs = np.asarray(labelOutputs).flatten()
     
@@ -255,7 +256,7 @@ test_imgs = [(i-test_mean)/test_sd for i in test_imgs]
 #    plt.plot(x,y,color='green', marker='o')
 ###-------------------------------------------------------------------------------####
         
-frames=5
+frames=3
 
 def generate_data(imgs,gtlabels,starts,frames,batch_size,val=False):
     """
@@ -279,26 +280,14 @@ def generate_data(imgs,gtlabels,starts,frames,batch_size,val=False):
             if file_idx >= len(idx_list)-1:
                 file_idx = 0
             idx = idx_list[file_idx]
-            seq_frames = []
-            for i in range(frames):
-                try:
 #                    frame,label = loadDepthMap(base_dir,base_labels,base_bbox,file_idx+i)
-                    frame,label = imgs[idx+i],gtlabels[idx+i]
-                    seq_frames.append(frame)
-                    if i == frames-1:
-                        
-                        batch_labels.append(label)
-                except:
-#                    seq_frames.append(seq_frames[-1])
-                    break
+            frame,label = imgs[idx],gtlabels[idx]
+            batch_frames.append(frame)
+            batch_labels.append(label)
             file_idx += 1
-            if seq_frames:
-                seq_frames= np.array(seq_frames)
-                batch_frames.append(seq_frames)
-#            print(len(batch_frames),file_idx,idx)
         image_batch = np.array(batch_frames)
         image_label = np.array(batch_labels)
-        image_batch = np.expand_dims(image_batch,4)
+        image_batch = np.expand_dims(image_batch,3)
         
         yield image_batch,image_label
         
@@ -311,18 +300,14 @@ def generate_data(imgs,gtlabels,starts,frames,batch_size,val=False):
 #for i in range(72572//10):
 #    y=next(x)
 #    print(i)
-
-def ConvModel():    
+        
+def ConvModel2():    
     model = Sequential()
-    model.add(Conv2D(16, (7,7), activation='relu', padding='same', input_shape=(cropHeight,cropWidth,1),kernel_initializer='he_normal',
+    model.add(Conv2D(32, (7,7), activation='relu', padding='same', input_shape=(cropHeight,cropWidth,1),kernel_initializer='he_normal',
                     kernel_regularizer=l2(1e-4)))
     model.add(BatchNormalization())
     model.add(MaxPooling2D(pool_size=(2, 2)))
-    model.add(Conv2D(32, (7,7), activation='relu', padding='same',kernel_initializer='he_normal',
-                    kernel_regularizer=l2(1e-4)))
-    model.add(BatchNormalization())
-    model.add(MaxPooling2D(pool_size=(2, 2)))
-    model.add(Conv2D(64, (5,5), activation='relu', padding='same',kernel_initializer='he_normal',
+    model.add(Conv2D(64, (7,7), activation='relu', padding='same',kernel_initializer='he_normal',
                     kernel_regularizer=l2(1e-4)))
     model.add(BatchNormalization())
     model.add(MaxPooling2D(pool_size=(2, 2)))
@@ -330,7 +315,7 @@ def ConvModel():
                     kernel_regularizer=l2(1e-4)))
     model.add(BatchNormalization())
     model.add(MaxPooling2D(pool_size=(2, 2)))
-    model.add(Conv2D(256, (3,3), activation='relu', padding='same',kernel_initializer='he_normal',
+    model.add(Conv2D(256, (5,5), activation='relu', padding='same',kernel_initializer='he_normal',
                     kernel_regularizer=l2(1e-4)))
     model.add(BatchNormalization())
     model.add(MaxPooling2D(pool_size=(2, 2)))
@@ -338,37 +323,19 @@ def ConvModel():
                     kernel_regularizer=l2(1e-4)))
     model.add(BatchNormalization())
     model.add(MaxPooling2D(pool_size=(2, 2)))
+#    model.add(Conv2D(512, (3,3), activation='relu', padding='same',kernel_initializer='he_normal',
+#                    kernel_regularizer=l2(1e-4)))
+#    model.add(BatchNormalization())
+#    model.add(MaxPooling2D(pool_size=(2, 2)))
     model.add(Flatten())
-    # model.add(Dense(256,activation='relu'))
-    return model
-                            # fix random seed for reproducibility
-seed        = 29
-np.random.seed(seed)
-optmz       = optimizers.Adam(lr=0.001)
-                            # define the deep learning model
-
-def LSTMModel():
-    model = Sequential()
-    model.add(TimeDistributed(ConvModel(),input_shape=(frames,cropHeight, cropWidth,1)))
-#    model.add(LSTM(2048,
-#         return_sequences=True,
-#         dropout=0.25,
-#         recurrent_dropout=0.25))
-#    model.add(LSTM(512,
-#         return_sequences=True,
-#         dropout=0.25,
-#         recurrent_dropout=0.25))
-    # model.add(LSTM(2048,
-    #         dropout=0.5))
-    model.add(Bidirectional(LSTM(1024,dropout=0.5)))
-    # model.add(Dense(256,activation='relu'))
+    model.add(Dense(1024,activation='relu'))
     model.add(Dense(42,activation='relu'))
     model.compile(loss='mse',
-                    optimizer=optmz,
+                    optimizer='adam',
                     metrics=['mse','mae'])
     return model
 
-model = LSTMModel()
+model = ConvModel2()
 model.summary()
 
 def lrSchedule(epoch):
@@ -392,7 +359,7 @@ def lrSchedule(epoch):
 
 LRScheduler     = LearningRateScheduler(lrSchedule)
 
-modelname = 'nyu_clstm_basic_new'
+modelname = 'nyu_clstm_cnn'
 filepath        = modelname + ".hdf5"
 checkpoint      = ModelCheckpoint(filepath, 
                                   monitor='val_loss', 
@@ -405,7 +372,7 @@ csv_logger      = CSVLogger(modelname +'.csv')
 callbacks_list  = [checkpoint,csv_logger]
 
 
-batch_size = 10
+batch_size = 20
 
 model.fit_generator(
     generate_data(train_imgs,train_labels,invalid_start,frames,batch_size),

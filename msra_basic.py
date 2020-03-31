@@ -1,19 +1,26 @@
 #!/usr/bin/env python3
 # -*- coding: utf-8 -*-
+"""
+Created on Wed Feb 12 17:36:22 2020
+
+@author: astroboon
+"""
 
 import numpy as np
 import cv2
 import pandas as pd
 import os
 import matplotlib.pyplot as plt
-from PIL import Image
+
+import os
 from tqdm import tqdm
 import csv
 import h5py
 import sklearn.metrics as metrics
-
+import struct
+import tensorflow as tf
 from tensorflow.keras.callbacks import ModelCheckpoint,CSVLogger,LearningRateScheduler
-from tensorflow.keras.models import Model,Sequential
+from tensorflow.keras.models import Model,Sequential,load_model
 from tensorflow.keras.layers import Conv2D
 from tensorflow.keras.layers import Input
 from tensorflow.keras.layers import LSTM, Bidirectional
@@ -35,162 +42,90 @@ config = ConfigProto()
 config.gpu_options.allow_growth = True
 session = InteractiveSession(config=config)
 
-data_dir = r'/home/boonyew/Documents/ICVL/Training/'
-val_dir = r'/home/boonyew/Documents/ICVL/Testing/'
-
-center_file = os.path.join(data_dir,'center_train_refined.txt')
-label_file = os.path.join(data_dir,'labels.txt')
-
-test_center_file = os.path.join(val_dir,'center_test2.txt')
-test_label_file = os.path.join(val_dir,'test_seq_2.txt')
-#data_dir = r'C:\Users\angbo\Documents\MTech ISS\Capstone\HandJointRehab\ICVL'
-
-fx = 240.99
-fy = 240.96
-u0 = 160
-v0 = 120
-
-height=240
-width=320
-keypointsNumber = 16
+data_dir = r'/home/boonyew/Documents/MSRA/train'
+val_dir = r'/home/boonyew/Documents/MSRA/test'
+center_dir = r'/home/boonyew/Documents/MSRA/center'
+keypoints_num = 21
+test_subject_id = 3
+cubic_size = 200
 cropWidth = 120
 cropHeight = 120
-batch_size = 8
-xy_thres = 95
-depth_thres = 150
-
-def pixel2world(x, fx, fy, ux, uy):
+keypointsNumber=21
+def joints3DToImg(sample):
     """
-        Converts coordinates from Image coordinates (xyz) to World coordinates (uvd)
-    
+    Denormalize sample from metric 3D to image coordinates
+    :param sample: joints in (x,y,z) with x,y and z in mm
+    :return: joints in (x,y,z) with x,y in image coordinates and z in mm
     """
+    ret = np.zeros((sample.shape[0], 3), np.float32)
+    for i in range(sample.shape[0]):
+        ret[i] = joint3DToImg(sample[i])
+    return ret
 
-    x[:, 0] = (x[:, 0] - ux) * x[:, 2] / fx
-    x[:, 1] = (x[:, 1] - uy) * x[:, 2] / fy
-    return x
-
-def world2pixel(x, fx, fy, ux, uy):
+def joint3DToImg(sample):
     """
-        Converts coordinates from World coordinates (uvd) to Image coordinates (xyz) 
-    
+    Denormalize sample from metric 3D to image coordinates
+    :param sample: joints in (x,y,z) with x,y and z in mm
+    :return: joints in (x,y,z) with x,y in image coordinates and z in mm
     """
-    x[:, 0] = x[:, 0] * fx / x[:, 2] + ux
-    x[:, 1] = x[:, 1] * fy / x[:, 2] + uy
-    return x
-
-def loadAnnotations(filename,centers,val=False):
-    f = open(filename,'r')
-    fc = open(centers,'r')
-    files = {}
-    labels = {}
-    for idx,line in enumerate(f):
-        if line.rstrip().split(' ') != ['']:
-            center = next(fc)
-    #        print(center)
-            if center.split(' ')[0] == 'invalid':
-                pass
-                
-            else:
-                joints = line.rstrip().split(' ')
-                filename = joints[0]
-                temp = filename.split('/')
-#                print(temp)
-                if len(temp) > 2:
-                    sub,seq,img = temp
-                else:
-                    sub = '200'
-                    seq,img = temp
-    #            joints[-1] = joints[-1].rstrip()
-    #            print(joints)
-                temp = np.reshape(np.array(joints[1:],dtype='float32'),(keypointsNumber,3))
-    #            temp[:,2] = -temp[:,2]
-        #            temp = world2pixel(temp,241.42,241.42,160,120)
-        #        temp = joints3DToImg(temp)
-                center = center.split(' ')
-                center[2] = center[2].rstrip()
-                center = np.array(center,dtype='float32')
-                labels.setdefault(sub,{})
-                labels[sub].setdefault(seq,{})
-                labels[sub][seq][img] = {}
-                labels[sub][seq][img]['labels'] = temp
-                labels[sub][seq][img]['center'] = center
-                labels[sub][seq][img]['bbox'] = get_bbox(center.reshape((1,3)))
-                files.setdefault(sub,{})
-                files[sub].setdefault(seq,[])
-                files[sub][seq].append(img)
-    f.close()
-    fc.close()
-    return labels,files
+    fx, fy, ux, uy = 241.42,241.42,160,120
+    ret = np.zeros((3, ), np.float32)
+    if sample[2] == 0.:
+        ret[0] = ux
+        ret[1] = uy
+        return ret
+    ret[0] = sample[0]/sample[2]*fx+ux
+    ret[1] = uy-sample[1]/sample[2]*fy
+    ret[2] = sample[2]
+    return ret
 
 
-def get_bbox(centers):
-        
-#    centre_test_world = pixel2world(centers.copy(), fx, fy, u0, v0)
-
-    centerlefttop_test = centers.copy()
-    centerlefttop_test[:,0] = centerlefttop_test[:,0]-xy_thres
-    centerlefttop_test[:,1] = centerlefttop_test[:,1]+xy_thres
-
-    centerrightbottom_test = centers.copy()
-    centerrightbottom_test[:,0] = centerrightbottom_test[:,0]+xy_thres
-    centerrightbottom_test[:,1] = centerrightbottom_test[:,1]-xy_thres
-
-    lefttop_pixel = world2pixel(centerlefttop_test, fx, fy, u0, v0)
-    rightbottom_pixel = world2pixel(centerrightbottom_test, fx, fy, u0, v0)
-
-    Xmin = max(lefttop_pixel[:,0], 0)
-    Ymin = max(rightbottom_pixel[:,1], 0)  
-    Xmax = min(rightbottom_pixel[:,0], width - 1)
-    Ymax = min(lefttop_pixel[:,1], height - 1)
-
-    return (int(Xmin),int(Xmax),int(Ymin),int(Ymax)) # Left Right Top Bottom
-
-def loadDepthMap(files,base_dir,sub,seq,file,return_bbox=False):
+def loadDepthMap(data_dir,sub,seq,file,labels,return_bbox=False):
     """
     Read a depth-map
     :param filename: file name to load
     :return: image data of depth image
     """
-    filename = os.path.join(base_dir,'Depth',sub,seq,file)
-#    print(filename)
-#    img = cv2.imread(filename)
-    img = np.array(Image.open(filename))
-    width, height = img.shape
-    left,right,top,bottom = files[sub][seq][file]['bbox']
-    joints = files[sub][seq][file]['labels']
-    center = files[sub][seq][file]['center']
-    
-    imCrop = img.copy()[int(top):int(bottom), int(left):int(right)]
-
-    imgResize = cv2.resize(imCrop, (cropWidth, cropHeight), interpolation=cv2.INTER_NEAREST)
-    imgResize = np.asarray(imgResize,dtype = 'float32')
-#    imgResize = imgResize*-1
-    imgResize[np.where(imgResize >= int(center[2]) + depth_thres)] = int(center[2])
-    imgResize[np.where(imgResize <= int(center[2]) - depth_thres)] = int(center[2])     
-#    
-    imgResize = (imgResize - int(center[2]))
-    
-    joints = resizeJoints(joints,left,right,top,bottom,center)
-    
+    filename=os.path.join(data_dir,sub,seq,file)
+    with open(filename, 'rb') as f:
+        # first 6 uint define the full image
+        width = struct.unpack('i', f.read(4))[0]
+        height = struct.unpack('i', f.read(4))[0]
+        left = struct.unpack('i', f.read(4))[0]
+        top = struct.unpack('i', f.read(4))[0]
+        right = struct.unpack('i', f.read(4))[0]
+        bottom = struct.unpack('i', f.read(4))[0]
+        patch = np.fromfile(f, dtype='float32', sep="")
+#        print(patch.shape)
+        imgdata = np.zeros((height, width), dtype='float32')
+        imgdata[top:bottom, left:right] = patch.reshape([bottom-top, right-left])
+        
+        imCrop = imgdata.copy()[int(top):int(bottom), int(left):int(right)]
+        imgResize = cv2.resize(imCrop, (cropWidth, cropHeight), interpolation=cv2.INTER_NEAREST)
+        imgResize = np.asarray(imgResize,dtype = 'float32') 
+        joints = labels[sub][seq][file]
+        joints = resizeJoints(joints,left,right,top,bottom)
+        
     if return_bbox:
-        return imgResize,joints,img,(left,right,top,bottom),center
+        return imgResize,joints,imgdata,(left,right,top,bottom)
     else:
         return imgResize, joints
 
-def resizeJoints(joints,left,right,top,bottom,center):
-    label_xy = np.ones((keypointsNumber, 3), dtype = 'float32') 
-    labelOutputs = np.ones((keypointsNumber, 3), dtype = 'float32') 
+def resizeJoints(joints,left,right,top,bottom):
+        ## label
+    label_xy = np.ones((21, 3), dtype = 'float32') 
+    labelOutputs = np.ones((21, 3), dtype = 'float32') 
     label_xy[:,0] = (joints[:,0].copy() - left)*cropWidth/(right - left) 
     label_xy[:,1] = (joints[:,1].copy() - top)*cropHeight/(bottom - top) 
     
     labelOutputs[:,1] = label_xy[:,1]
     labelOutputs[:,0] = label_xy[:,0] 
-    labelOutputs[:,2] = joints[:,2] - center[2]
+    labelOutputs[:,2] = joints[:,2]
     labelOutputs = np.asarray(labelOutputs).flatten()
     
     return labelOutputs
 
-def returnJoints(joints,left,right,top,bottom,center):
+def returnJoints(joints,left,right,top,bottom):
     label_xy = np.ones((keypointsNumber, 3), dtype = 'float32') 
     labelOutputs = np.ones((keypointsNumber, 3), dtype = 'float32') 
     label_xy[:,0] = (joints[:,0].copy()*(right - left)/cropWidth) + left 
@@ -198,29 +133,69 @@ def returnJoints(joints,left,right,top,bottom,center):
     
     labelOutputs[:,1] = label_xy[:,1]
     labelOutputs[:,0] = label_xy[:,0] 
-    labelOutputs[:,2] = joints[:,2] +center[2]
+    labelOutputs[:,2] = joints[:,2]
     labelOutputs = np.asarray(labelOutputs).flatten()
     
     return labelOutputs
+    
+def loadJoints(filename):
+    f = open(filename,'r')
+    labels = []
+    for idx,line in enumerate(f):
+        if idx == 0:
+            pass
+        else:
+            joints = line.split(' ')
+            joints[-1] = joints[-1].rstrip()
+            temp = np.reshape(np.array(joints,dtype='float32'),(21,3))
+            temp[:,2] = -temp[:,2]
+#            temp = world2pixel(temp,241.42,241.42,160,120)
+            temp = joints3DToImg(temp)
+            labels.append(temp)
+    return np.array(labels)
+
+def loadPaths(data_dir):
+    file_dir = {}
+    labels = {}
+    for sub in os.listdir(data_dir):
+        if sub[0] == 'P':
+            file_dir[sub] = {}
+            labels[sub] = {}
+            sub_path = os.path.join(data_dir,sub)
+            for seq in os.listdir(sub_path):
+                labels[sub][seq] = {}
+                seq_path = os.path.join(sub_path,seq)
+                file_dir[sub][seq] = [file for file in os.listdir(seq_path) if file.split('.')[1] == 'bin']
+                file_dir[sub][seq].sort()
+                joints_path = os.path.join(seq_path,'joint.txt')
+                joints = loadJoints(joints_path)
+                for idx,file in enumerate(file_dir[sub][seq]):
+                    labels[sub][seq][file] = joints[idx]
+    return file_dir,labels
 
 # Debug code
-files,filelists = loadAnnotations(label_file,center_file)
-test_files,test_filelists = loadAnnotations(test_label_file,test_center_file)
-#test_paths = test_files['200']['test_seq_1'].keys()
-#test_imgs = [loadDepthMap(test_files,val_dir,'200','test_seq_1',i) for i in list(test_paths)]
+files, labels = loadPaths(data_dir)
+val_files,val_labels=loadPaths(val_dir)
+#test_paths = files['P0']['1']
+#test_imgs = [loadDepthMap('P0','1',i) for i in test_paths]
 #imgs, xlabels = zip(*test_imgs)
 #imgs = np.array(imgs)
 #xlabels = np.array(xlabels)
-#plt.imshow(imgs[10])
-#for x,y,z in np.reshape(xlabels[2],(16,3)):
+#plt.imshow(imgs[2])
+#for x,y,z in np.reshape(xlabels[2],(21,3)):
 #    plt.plot(x,y,color='green', marker='o')
 ###-------------------------------------------------------------------------------####
         
 frames=5
 
-def generate_data_val(files,filelist,frames,batch_size):
+def generate_data_val(files,labels,frames,batch_size,val=False):
     """Replaces Keras' native ImageDataGenerator."""
-    
+    if val:
+        base_dir = val_dir
+        base_labels = val_labels
+    else: 
+        base_dir = data_dir
+        base_labels = labels
     sub_idx =0
     seq_idx=0
     file_idx=0
@@ -230,11 +205,11 @@ def generate_data_val(files,filelist,frames,batch_size):
         batch_frames=[]
         batch_labels=[]
         for b in range(batch_size):
-            sub_list =list(filelist.keys())
+            sub_list =list(files.keys())
             sub_name = sub_list[sub_idx]
-            seq_list = list(filelist[sub_name].keys())
+            seq_list = list(files[sub_name].keys())
             seq_name =seq_list[seq_idx]
-            file_list = filelist[sub_name][seq_name]
+            file_list = files[sub_name][seq_name]
             file_list.sort()
             end_idx = len(file_list) - frames
             seq_frames=[]
@@ -242,7 +217,7 @@ def generate_data_val(files,filelist,frames,batch_size):
             for i in range(frames):
                 try:
                     frame_name = file_list[file_idx+i]
-                    frame,label = loadDepthMap(files,val_dir,sub_name,seq_name,frame_name)
+                    frame,label = loadDepthMap(base_dir,sub_name,seq_name,frame_name,base_labels)
                     seq_frames.append(frame)
                     if i == frames-1:
                         batch_labels.append(label)
@@ -270,11 +245,17 @@ def generate_data_val(files,filelist,frames,batch_size):
         
         yield image_batch,image_label
         
-def generate_data(files,filelist,frames,batch_size):
+def generate_data(files,labels,frames,batch_size,val=False):
     """
         Custom data generator for generating sequences of N Frames for K Batches
     
     """
+    if val:
+        base_dir = val_dir
+        base_labels = val_labels
+    else: 
+        base_dir = data_dir
+        base_labels = labels
     batch_size=batch_size
     # frames = 5
     while True:
@@ -282,23 +263,22 @@ def generate_data(files,filelist,frames,batch_size):
         batch_labels=[]
         for b in range(batch_size):
             # Generate random index for sub,seq,start_frame
-            sub_list =list(filelist.keys())
+            sub_list =list(files.keys())
             sub_idx = np.random.randint(0,len(sub_list))
             sub_name = sub_list[sub_idx]
-            seq_list = list(filelist[sub_name].keys())
+            seq_list = list(files[sub_name].keys())
             seq_idx = np.random.randint(0,len(seq_list))
             seq_name =seq_list[seq_idx]
-            file_list =filelist[sub_name][seq_name]
+            file_list = files[sub_name][seq_name]
             file_list.sort()
-            factor = np.random.randint(1,2)
-            end_idx = len(file_list) - frames*factor
+            end_idx = len(file_list) - frames
             file_idx = np.random.randint(0,end_idx)
             seq_frames=[]
 #            print(len(batch_frames),sub_name,seq_name,file_idx)
             for i in range(frames):
                 try:
-                    frame_name = file_list[file_idx+i*factor]
-                    frame,label = loadDepthMap(files,data_dir,sub_name,seq_name,frame_name)
+                    frame_name = file_list[file_idx+i]
+                    frame,label = loadDepthMap(base_dir,sub_name,seq_name,frame_name,base_labels)
                     seq_frames.append(frame)
                     if i == frames-1:
                         batch_labels.append(label)
@@ -315,10 +295,10 @@ def generate_data(files,filelist,frames,batch_size):
         
         yield image_batch,image_label
 #		        
-##
-#x=generate_data_val(test_files,test_filelists,5,5)
+#
+#x=generate_data(files,labels,10)
 #y=next(x)
-##        
+        
 def ConvModel():    
     model = Sequential()
     model.add(Conv2D(16, (7,7), activation='relu', padding='same', input_shape=(cropHeight,cropWidth,1),kernel_initializer='he_normal',
@@ -369,7 +349,7 @@ def LSTMModel():
     #         dropout=0.5))
     model.add(Bidirectional(LSTM(1536,dropout=0.5)))
     # model.add(Dense(256,activation='relu'))
-    model.add(Dense(48,activation='relu'))
+    model.add(Dense(63,activation='relu'))
     model.compile(loss='mse',
                     optimizer=optmz,
                     metrics=['mse','mae'])
@@ -399,7 +379,7 @@ def lrSchedule(epoch):
 
 LRScheduler     = LearningRateScheduler(lrSchedule)
 
-modelname = 'icvl_clstm_basic_120_new'
+modelname = 'msra_clstm_basic_120_P6'
 filepath        = modelname + ".hdf5"
 checkpoint      = ModelCheckpoint(filepath, 
                                   monitor='val_loss', 
@@ -414,42 +394,16 @@ callbacks_list  = [checkpoint,csv_logger]
 
 batch_size = 10
 
-#model.fit_generator(
-#    generate_data(files,filelists,frames,batch_size),
-#    epochs=10,
-#    validation_data=generate_data_val(test_files,test_filelists,frames,batch_size),
-#    validation_steps=695//batch_size,
-#    steps_per_epoch=320000//batch_size,
-#    verbose=True,
-#    callbacks=callbacks_list)
+model.fit_generator(
+    generate_data(files,labels,frames,batch_size),
+    epochs=10,
+    validation_data=generate_data_val(val_files,val_labels,frames,batch_size,val=True),
+    validation_steps=17*(500-frames)//batch_size,
+    steps_per_epoch=7*17*(500-frames)//batch_size,
+    verbose=True,
+    callbacks=callbacks_list)
 #
 
-#def test_model():
-#    modelGo=LSTMModel()
-#    modelGo.load_weights(filepath)
-#    modelGo.compile(loss='mse', 
-#                    optimizer=optmz, 
-#                    metrics=['mse','mae'])
-#    val_files,val_labels=loadPaths(val_dir)
-#    seqs = val_files['P8']
-#    test_imgs = []
-#    test_labels = []
-#    for i in seqs:
-#        imgs = [loadDepthMap(data_dir,'P8',i,x,labels) for x in seqs[i]]
-#        imgs, xlabels = zip(*test_imgs)
-#        test_imgs.append(imgs)
-#        test_labels.append(xlabel)
-#    test_imgs = np.array(test_imgs)
-#    test_labels = np.array(test_labels)
-
-    # test_paths = files['P0']['1']
-    # test_imgs = [loadDepthMap('P0','1',i) for i in test_paths]
-    # imgs, xlabels = zip(*test_imgs)
-    # imgs = np.array(imgs)
-    # xlabels = np.array(xlabels)
-    # plt.imshow(imgs[2])
-    # for x,y,z in np.reshape(xlabels[2],(21,3)):
-    #    plt.plot(x,y,color='green', marker='o')
 
 def loadModel(modelpath):
     modelGo=LSTMModel()
@@ -459,7 +413,7 @@ def loadModel(modelpath):
                     metrics=['mse','mae'])
     return modelGo
 
-def testPipeline(modelGo,base_dir,files,filelist,sub,seq,file_idx):
+def testPipeline(modelGo,base_dir,files,sub,seq,file_idx):
     """
     Read a depth-map
     :param filename: file name to load
@@ -471,65 +425,62 @@ def testPipeline(modelGo,base_dir,files,filelist,sub,seq,file_idx):
     file_idx=file_idx
     frames = 5
     batch_labels=[]
-    sub_list =list(filelist.keys())
+    sub_list =list(files.keys())
     sub_name = sub_list[sub_idx]
-    seq_list = list(filelist[sub_name].keys())
+    seq_list = list(files[sub_name].keys())
     seq_name =seq_list[seq_idx]
-    file_list = filelist[sub_name][seq_name]
+    file_list = files[sub_name][seq_name]
     file_list.sort()
     end_idx = len(file_list) - frames
     seq_frames=[]
 #            print(len(batch_frames),sub_name,seq_name,file_idx)
     for i in range(frames):
         frame_name = file_list[file_idx+i]
-        frame,label, a ,bbox,c = loadDepthMap(files,base_dir,sub_name,seq_name,frame_name,True)
+        frame,label, a ,bbox = loadDepthMap(val_dir,sub_name,seq_name,frame_name,val_labels,True)
         seq_frames.append(frame)
         if i == frames-1:
             batch_labels.append(label)
             img = a
             predict_image = frame
             left,right,top,bottom = bbox
-            center = c
     seq_frames= np.expand_dims(np.array(seq_frames),3)
     seq_frames = np.expand_dims(seq_frames,0)
     predictions = modelGo.predict(seq_frames)
     predictions = predictions.reshape((keypointsNumber,3))
-    predict_joints = returnJoints(predictions,left,right,top,bottom,center)
-    gtlabel = returnJoints(np.array(label).reshape((16,3)),left,right,top,bottom,center)
+    predict_joints = returnJoints(predictions,left,right,top,bottom)
+    gtlabel = returnJoints(np.array(label).reshape((keypointsNumber,3)),left,right,top,bottom)
     return img,predict_joints,gtlabel
-
-modelpath = './result/icvl_clstm_basic_120_new.hdf5'
-modelGo = loadModel(modelpath)
-
-def testImg(modelGo,sub=0,seq=0,idx=0):
-    
-    x,y,truey = testPipeline(modelGo,val_dir,test_files,test_filelists,sub,seq,idx)
-#    img = draw_pose(x,np.reshape(y,(16,3)))
-    plt.imshow(x)
-    for x,y1,z in np.reshape(y,(16,3)):
-        plt.plot(x,y1,color='green', marker='o')
-    for x,y1,z in np.reshape(truey,(16,3)):
-        plt.plot(x,y1,color='red', marker='o')
-    
-#testImg(modelGo,0,0,150)
-
-modelGo.evaluate_generator(generate_data_val(test_files,test_filelists,frames,batch_size), steps=890//batch_size,verbose=1)
+#
+#modelpath = './result/msra_clstm_basic_120_P6.hdf5'
+#model = loadModel(modelpath)
+#
+#def testImg(modelGo,sub=0,seq=0,idx=0):
+#    val_files,val_labels,frames,batch_size,
+#    x,y,truey = testPipeline(modelGo,val_dir,val_files,sub,seq,idx)
+#    plt.imshow(x)
+#    for x,y1,z in np.reshape(y,(21,3)):
+#        plt.plot(x,y1,color='green', marker='o')
+#    for x,y1,z in np.reshape(truey,(21,3)):
+#        plt.plot(x,y1,color='red', marker='o')
+#    
+#testImg(modelGo,0,0,200)
 
 def draw_pose(input_img, pose):
     # Palm, Thumb root, Thumb mid, Thumb tip, Index root, Index mid, Index tip, Middle root, Middle mid, Middle tip, Ring root, Ring mid, Ring tip, Pinky root, Pinky mid, Pinky tip.
     img = input_img.copy()
-    sketch = [(0, 1), (1, 2), (2, 3), (0, 4), (4, 5), (5, 6), (0, 7),
-                (7, 8), (8, 9), (0, 10), (10, 11), (11, 12), (0, 13), (13, 14), (14, 15)]
+    sketch = [(0, 1), (1, 2), (2, 3), (3, 4), (0, 5), (5, 6), (6, 7), (7, 8),
+                (0, 9), (9, 10), (10, 11), (11, 12), (0, 13), (13, 14), (14, 15), (15, 16),
+                (0, 17), (17, 18), (18, 19), (19, 20)]
     idx = 0
     #plt.figure()
     for pt in pose:
-        cv2.circle(img, (int(pt[0]), int(pt[1])), 5, (0, 255, 0) , 1)
+        cv2.circle(img, (int(pt[0]), int(pt[1])), 5, 5, -1)
         #plt.scatter(pt[0], pt[1], pt[2])
         idx = idx + 1
     idx = 0
     for x, y in sketch:
         cv2.line(img, (int(pose[x, 0]), int(pose[x, 1])),
-                 (int(pose[y, 0]), int(pose[y, 1])), (0, 255, 0), 2)
+                 (int(pose[y, 0]), int(pose[y, 1])), 5, 2)
         idx = idx + 1
     #plt.show()
     return img

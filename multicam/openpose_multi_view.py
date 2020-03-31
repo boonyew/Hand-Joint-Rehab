@@ -53,7 +53,7 @@ try:
         import pyopenpose as op
     else:
         # Change these variables to point to the correct folder (Release/x64 etc.)
-        sys.path.append('/home/boonyew/openpose/python');
+        sys.path.append('/home/boonyew/openpose/build/python/');
         # If you run `make install` (default path is `/usr/local/python` for Ubuntu), you can also access the OpenPose/python module from there. This will install OpenPose and the python library at your desired installation path. Ensure that this is in your python path in order to use it.
         # sys.path.append('/usr/local/python')
         from openpose import pyopenpose as op
@@ -108,7 +108,7 @@ def predict_keypoints(color_image,rect):
     # Create new datum
     
     datum.cvInputData = imageToProcess
-    datum.handRectangles = handRectangles
+    # datum.handRectangles = handRectangles
     
     # Process and display image
     opWrapper.emplaceAndPop([datum])
@@ -177,27 +177,29 @@ def find3dpoint(cameras,threshold,img,jdx,undistort=False):
     # also p. 587)
     # Construct matrices
     A=[]
-    for name in cameras:
-        cam = cameras[name]
-#            if undistort:
-#                xy = cam.undistort( [xy] )
-        Pmat = cam['proj']
-        row2 = Pmat[2,:]
-        x,y,c = cam[img][0][jdx]
-        if c >= threshold:
-            A.append( x*row2 - Pmat[0,:] )
-            A.append( y*row2 - Pmat[1,:] )
+    try:
+        for name in cameras:
+            cam = cameras[name]
+    #            if undistort:
+    #                xy = cam.undistort( [xy] )
+            Pmat = cam['proj']
+            row2 = Pmat[2,:]
+            x,y,c = cam[img][0][jdx]
+            if c >= threshold:
+                A.append( x*row2 - Pmat[0,:] )
+                A.append( y*row2 - Pmat[1,:] )
 
-    # Calculate best point
-    if len(A) < 4:
-#        print('Invalid point')
+        # Calculate best point
+        if len(A) < 4:
+    #        print('Invalid point')
+            return False,0
+        else:
+            A=np.array(A)
+            u,d,vt=np.linalg.svd(A)
+            X = vt[-1,0:3]/vt[-1,3] # normalize
+            return True, X
+    except:
         return False,0
-    else:
-        A=np.array(A)
-        u,d,vt=np.linalg.svd(A)
-        X = vt[-1,0:3]/vt[-1,3] # normalize
-        return True, X
-
 def calibrateCameras(align,device_manager,frames,chessboard_params):
 
     """

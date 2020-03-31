@@ -14,20 +14,20 @@ from tensorflow.compat.v1 import InteractiveSession
 config = ConfigProto()
 config.gpu_options.allow_growth = True
 session = InteractiveSession(config=config)
-h5_path =  './result/icvl_clstm_basic_120.hdf5'
+h5_path =  './result/icvl_clstm_basic_120_new.hdf5'
 model = load_model(h5_path)
 model.summary()
 #icvl_net = cv2.dnn.readNetFromTensorflow('./new/model.pb')
 
 height = 480
 width= 640
-cropHeight = 176
-cropWidth = 176
+cropHeight = 120
+cropWidth = 120
 fx=628.668
 fy=628.668
 u0=311.662
 v0=231.571
-xy_thres = 130
+xy_thres = 95
 depth_thres = 150
 keypointsNumber = 16
 
@@ -137,9 +137,9 @@ def preprocess(img):
     imgResize[np.where(imgResize <= int(center[2]) - depth_thres)] = int(center[2])     
 #    
     imgResize = (imgResize - int(center[2]))
-    return imgResize, (left,right,top,bottom)
+    return imgResize, (left,right,top,bottom),center
 
-def returnJoints(joints,bbox):
+def returnJoints(joints,bbox,center):
     
     left,right,top,bottom = bbox
     label_xy = np.ones((keypointsNumber, 3), dtype = 'float32') 
@@ -149,10 +149,28 @@ def returnJoints(joints,bbox):
     
     labelOutputs[:,1] = label_xy[:,1]
     labelOutputs[:,0] = label_xy[:,0] 
-    labelOutputs[:,2] = joints[:,2]
+    labelOutputs[:,2] = joints[:,2] + center[2]
 #    labelOutputs = np.asarray(labelOutputs).flatten()
     
     return labelOutputs
+
+RED = (0, 0, 255)
+GREEN = (75, 255, 66)
+BLUE = (255, 0, 0)
+YELLOW = (17, 240, 244)
+PURPLE = (255, 255, 0)
+CYAN = (255, 0, 255)
+
+
+def get_sketch_color():
+    return [RED, RED, RED, GREEN, GREEN, GREEN,
+            BLUE, BLUE, BLUE, YELLOW, YELLOW, YELLOW,
+            PURPLE, PURPLE, PURPLE]
+
+def get_joint_color():
+    return [CYAN, RED, RED, RED, GREEN, GREEN, GREEN,
+            BLUE, BLUE, BLUE, YELLOW, YELLOW, YELLOW,
+            PURPLE, PURPLE, PURPLE]
 
 def draw_pose(img, pose):
     # Palm, Thumb root, Thumb mid, Thumb tip, Index root, Index mid, Index tip, Middle root, Middle mid, Middle tip, Ring root, Ring mid, Ring tip, Pinky root, Pinky mid, Pinky tip.
@@ -160,15 +178,17 @@ def draw_pose(img, pose):
     sketch = [(0, 1), (1, 2), (2, 3), (0, 4), (4, 5), (5, 6), (0, 7),
                 (7, 8), (8, 9), (0, 10), (10, 11), (11, 12), (0, 13), (13, 14), (14, 15)]
     idx = 0
+    colors = get_sketch_color()
+    colors_joint = get_joint_color()
     #plt.figure()
     for pt in pose:
-        cv2.circle(img, (int(pt[0]), int(pt[1])), 10, idx , 1)
+        cv2.circle(img, (int(pt[0]), int(pt[1])), 10, colors_joint[idx] , 1)
         #plt.scatter(pt[0], pt[1], pt[2])
         idx = idx + 1
     idx = 0
     for x, y in sketch:
         cv2.line(img, (int(pose[x, 0]), int(pose[x, 1])),
-                 (int(pose[y, 0]), int(pose[y, 1])), idx, 2)
+                 (int(pose[y, 0]), int(pose[y, 1])), colors[idx], 2)
         idx = idx + 1
     #plt.show()
     return img
@@ -212,7 +232,7 @@ try:
 #        aligned_frames = align.process(frames)
         aligned_depth_frame = frames.get_depth_frame()
         depth_image = np.asanyarray(aligned_depth_frame.get_data())
-        depth_p,bbox = preprocess(depth_image)
+        depth_p,bbox,center = preprocess(depth_image)
         frame_block.append(depth_p)
 
     frame_seq= frame_block[-5:]
@@ -237,7 +257,7 @@ try:
 
         # Preprocess image
         frame_seq.pop(0)
-        depth_p,bbox = preprocess(depth_image)
+        depth_p,bbox,center = preprocess(depth_image)
 #        print(depth_p.shape)
         frame_seq.append(depth_p)
 #        print(frame_seq)
@@ -247,10 +267,10 @@ try:
 #        icvl_net.setInput(cv2.dnn.blobFromImages(frame_seq))
 #        joints = icvl_net.forward()
         joints = model.predict(frame_seqa)
-        joints = returnJoints(np.reshape(joints,(16,3)),bbox)
+        joints = returnJoints(np.reshape(joints,(16,3)),bbox,center)
 #        print(joints)
 #        depth_predict = draw_pose(depth_p,joints)
-        color_predict = draw_pose(color_image,joints)
+        # color_predict = draw_pose(color_image,joints)
 
 
         # Remove background - Set pixels further than clipping_distance to grey
@@ -265,7 +285,7 @@ try:
         depth_colormap = draw_pose(depth_colormap,joints)
 
         # Stack both images horizontally
-        images = np.hstack((color_predict, depth_colormap))
+        # images = np.hstack((color_predict, depth_colormap))
         
         # Save image, depth and color images
 #        image_file = file_prefix + str(idx) + '.png'
@@ -280,7 +300,7 @@ try:
         
         # Show images for debugging
         cv2.namedWindow('RealSense', cv2.WINDOW_AUTOSIZE)
-        cv2.imshow('RealSense', images)
+        cv2.imshow('RealSense', depth_colormap)
         key = cv2.waitKey(1)
         # Press esc or 'q' to close the image window
         if key & 0xFF == ord('q') or key == 27:
