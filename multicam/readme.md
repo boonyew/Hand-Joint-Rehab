@@ -1,10 +1,12 @@
 # OpenPose Multi-View Hand Pose Triangulation
 
+---
 
 # 1. Installation and Setup
 
 To use the OpenPose Multi-View triangulation tool, the official OpenPose system needs to be installed as well as the necessary Python API bindings. The system is also build for Intel RealSense cameras, which will require the RealSense drivers for Windows and Ubuntu/Other Linux distros. 
 
+---
 ## 1.1 Install OpenPose
 
 1.  Install the OpenPose prerequisites, which can be found in the [prerequisites guide](https://github.com/CMU-Perceptual-Computing-Lab/openpose/blob/master/doc/prerequisites.md)
@@ -15,11 +17,13 @@ To use the OpenPose Multi-View triangulation tool, the official OpenPose system 
 1. Git clone the repository and run `cd ./Hand-Joint-Rehab/multicam`
 2. Install the required Python3 packages in `requirements.txt`
 
+---
 # 2. Environment Setup
 
 The system requires at least two cameras to retrieve 3D points, but will work fine with a single camera for gathering 2D points. A printout of the chessboard.png for calibration is also required (A4 size should be good). An example of the layout of the cameras and chessboard printout is show below:
 
 
+---
 
 # 3. Usage
 
@@ -31,6 +35,9 @@ In order to start using the tool, open a terminal in the `multicam` folder and r
 By default, the flags for recording the RGB and Depth and hand bounding boxes are turned off. In order to enable them, run the following command: `python3 openpose_multiview.py y y`
 
 The details of the steps involved are discussed below.
+
+---
+
 ## 3.1 Camera Calibration
 
 The objective of this step is to calibrate the RealSense cameras, and to retreive their transformation matrices which will be used in Step 3 where the multiple 2D points are triangulated. In this step, the chessboard piece has to be visible to the cameras.
