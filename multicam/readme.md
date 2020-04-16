@@ -72,6 +72,7 @@ To use custom bounding box coordinates:
 `bbox['821212062729'] = [155.,60.,350.,350.]`
 `bbox['851112060943'] = [100.,40.,350.,350.]`
 `bbox['851112062097'] = [140.,25.,350.,350.]`
+The format of the bounding box coordinates is [x coordinate, y coordinate, width, height].
 
 ## 3.3 3D Keypoint Triangulation
 
