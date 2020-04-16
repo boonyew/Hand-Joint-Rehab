@@ -29,7 +29,8 @@ The system requires at least two cameras to retrieve 3D points, but will work fi
 
 There are three steps involved in using this system: **1. Camera Calibration** and **2. 2D Hand Keypoint Detection** and **3. 3D Keypoint Triangulation**. 
 
-In order to start using the tool, open a terminal in the `multicam` folder and run the following command:
+In order to start using the tool, first set the path in the `openpose_multiview.py` file to the correct OpenPose Python directory:
+`sys.path.append('/home/boonyew/openpose/build/python/');`. Open a terminal in the `multicam` folder and run the following command:
 `python3 openpose_multiview.py`. 
 
 By default, the flags for recording the RGB and Depth and hand bounding boxes are turned off. In order to enable them, run the following command: `python3 openpose_multiview.py y y` or change FLAGS_SAVE_IMGS and FLAGS_USE_BBOX to `True`.
@@ -52,7 +53,7 @@ During this step, the calibration process will continue until a satisfactory est
 `Calibration completed... 
 Place your hand in the field of view of the devices...`
 
-### 3.11 Troubleshooting
+### Troubleshooting
 
 At times the calibration process may fail to estimate the camera parameters, you can try the following methods to solve it:
 
