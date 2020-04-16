@@ -1,35 +1,77 @@
-﻿# Box dimensions calculation using multiple realsense camera
-
-## Requirements: 
-### Python Version
-This code requires Python 3.6 to work and does not work with Python 2.7.
-
-### Packages: 
-1. OpenCV
-2. LibRealSense
-3. Numpy
-
-Get these packages using pip: pip install opencv-python numpy pyrealsense2
+# OpenPose Multi-View Hand Pose Triangulation
 
 
-## Aim
-This sample demonstrates the ability to use the SDK for aligning multiple devices to a unified co-ordinate system in world to solve a simple task such as dimension calculation of a box. 
+# 1. Installation and Setup
+
+To use the OpenPose Multi-View triangulation tool, the official OpenPose system needs to be installed as well as the necessary Python API bindings. The system is also build for Intel RealSense cameras, which will require the RealSense drivers for Windows and Ubuntu/Other Linux distros. 
+
+## 1.1 Install OpenPose
+
+1.  Install the OpenPose prerequisites, which can be found in the [prerequisites guide](https://github.com/CMU-Perceptual-Computing-Lab/openpose/blob/master/doc/prerequisites.md)
+2. Install OpenPose from source using the official guide [here](https://github.com/CMU-Perceptual-Computing-Lab/openpose/blob/master/doc/installation.md#installation). For Ubuntu or other Linux OS, CMake version 3.15 and above is required. 
+
+## 1.2 Install Python Requirements
+
+1. Git clone the repository and run `cd ./Hand-Joint-Rehab/multicam`
+2. Install the required Python3 packages in `requirements.txt`
+
+# 2. Environment Setup
+
+The system requires at least two cameras to retrieve 3D points, but will work fine with a single camera for gathering 2D points. A printout of the chessboard.png for calibration is also required (A4 size should be good). An example of the layout of the cameras and chessboard printout is show below:
 
 
-## Workflow
-1. Place the calibration chessboard object into the field of view of all the realsense cameras. Update the chessboard parameters in the script in case a different size is chosen.                                 
-2. Start the program.                                                                                                 
-3. Allow calibration to occur and place the desired object ON the calibration object when the program asks for it. Make sure that the object to be measured is not bigger than the calibration object in length and width.            
-4. The length, width and height of the bounding box of the object is then displayed in millimeters.                   
-Note: To keep the demo simpler, the clipping of the usable point cloud is done based on the assumption that the object is placed ON the calibration object and the length and width is less than that of the calibration object. 
 
+# 3. Usage
 
-## Example Output
-Once the calibration is done and the target object's dimensions are calculated, the application will open as many windows as the number of devices connected each displaying a color image along with an overlay of the calculated bounding box.
-In the following example we've used two Intel® RealSense™ Depth Cameras D435 pointing at a common object placed on a 6 x 9 chessboard (checked-in with this demo folder).
-![sampleSetupAndOutput](https://github.com/framosgmbh/librealsense/blob/box_dimensioner_multicam/wrappers/python/examples/box_dimensioner_multicam/samplesetupandoutput.jpg)
+There are three steps involved in using this system: **1. Camera Calibration** and **2. 2D Hand Keypoint Detection** and **3. 3D Keypoint Triangulation**. 
 
-## References
-Rotation between two co-ordinates using Kabsch Algorithm: 
-Kabsch W., 1976, A solution for the best rotation to relate two sets of vectors, Acta Crystallographica, A32:922-923
+In order to start using the tool, open a terminal in the `multicam` folder and run the following command:
+`python3 openpose_multiview.py`. 
+
+By default, the flags for recording the RGB and Depth and hand bounding boxes are turned off. In order to enable them, run the following command: `python3 openpose_multiview.py y y`
+
+The details of the steps involved are discussed below.
+## 3.1 Camera Calibration
+
+The objective of this step is to calibrate the RealSense cameras, and to retreive their transformation matrices which will be used in Step 3 where the multiple 2D points are triangulated. In this step, the chessboard piece has to be visible to the cameras.
+
+Once the script has been run, the calibration process will start and the following output will appear in the terminal:
+
+`Place the chessboard on the plane where the object needs to be detected..`
+`Place the chessboard on the plane where the object needs to be detected..`
+
+During this step, the calibration process will continue until a satisfactory estimation of the camera parameters is achieved. You may have to adjust the chessboard around until the following output is achieved:
+
+`Calibration completed... 
+Place your hand in the field of view of the devices...`
+
+### 3.11 Troubleshooting
+
+At times the calibration process may fail to estimate the camera parameters, you can try the following methods to solve it:
+
+1. Ensure that the entire chessboard is visible from the cameras' point of views/images
+2. Ensure that the surroundings are in reasonably good lighting and without shadows being cast onto the printout
+
+## 3.2 2D Hand Keypoint Detection
+
+The 2D hand keypoint detection is done using the OpenPose detector models for each of the RGB images retreived from the camera. By default, the bounding box supplied is a square box in the center of the image. For best results, the cameras can be adjusted to ensure that the hand is in the middle of each of the images captured by the cameras.
+
+To use custom bounding box coordinates:
+
+1. In order to supply new bounding box coordinates, the `FLAGS_USE_BBOX` argument has to be enabled by running `python3 openpose_multiview.py n y`
+
+2. The bounding box coordinates can by adding the respective coordinates to the `bbox` object:
+`bbox = {}`
+`bbox['821212062729'] = [155.,60.,350.,350.]`
+`bbox['851112060943'] = [100.,40.,350.,350.]`
+`bbox['851112062097'] = [140.,25.,350.,350.]`
+
+## 3.3 3D Keypoint Triangulation
+
+By default, the 3D keypoint triangulation is performed using the detected keypoints from the 2D hand keypoint detection step. A threshold is set in order to filter poorly detected keypoints from that step in order to prevent invalid training labels and is currently set at **0.2**
+
+This threshold can be modified in the following line:
+
+`#Triangulate 3d keypoints`
+`points[frame_id] = find3dpoints(cameras,0.2,frame_id)`
 

@@ -1,16 +1,4 @@
-###########################################################################################################################
-##                      License: Apache 2.0. See LICENSE file in root directory.                                         ##
-###########################################################################################################################
-##                  Simple Box Dimensioner with multiple cameras: Main demo file                                         ##
-###########################################################################################################################
-## Workflow description:                                                                                                 ##
-## 1. Place the calibration chessboard object into the field of view of all the realsense cameras.                       ##
-##    Update the chessboard parameters in the script in case a different size is chosen.                                 ##
-## 2. Start the program.                                                                                                 ##
-## 3. Allow calibration to occur and place the desired object ON the calibration object when the program asks for it.    ##
-##    Make sure that the object to be measured is not bigger than the calibration object in length and width.            ##
-## 4. The length, width and height of the bounding box of the object is then displayed in millimeters.                   ##
-###########################################################################################################################
+
 
 # Import RealSense, OpenCV and NumPy
 import pyrealsense2 as rs
@@ -32,6 +20,19 @@ from helper_functions import get_boundary_corners_2D
 
 # Import Openpose (Windows/Ubuntu/OSX)
 dir_path = os.path.dirname(os.path.realpath(__file__))
+
+if len(sys.argv) != 3:
+    print()
+    print("Usage: python3 openpose_multiview.py save_imgs=y/n use_bbox=y/n save_matrix=y/n")
+    print("Defaulting to preset values...")
+    FLAGS_SAVE_IMGS = False
+    FLAGS_USE_BBOX = False
+    FLAGS_SAVE_MATRIX = True
+else:
+    FLAGS_SAVE_IMGS = True if sys.argv[1] == "y" else False
+    FLAGS_USE_BBOX = True if sys.argv[2] == 'y' else False
+    FLAGS_SAVE_MATRIX = True if sys.argv[3] == 'y' else False
+
 bbox = {}
 bbox['821212062729'] = [155.,60.,350.,350.]
 bbox['851112060943'] = [100.,40.,350.,350.]
@@ -57,14 +58,10 @@ try:
         # If you run `make install` (default path is `/usr/local/python` for Ubuntu), you can also access the OpenPose/python module from there. This will install OpenPose and the python library at your desired installation path. Ensure that this is in your python path in order to use it.
         # sys.path.append('/usr/local/python')
         from openpose import pyopenpose as op
+
 except ImportError as e:
     print('Error: OpenPose library could not be found. Did you enable `BUILD_PYTHON` in CMake and have this Python script in the right folder?')
     raise e
-
-# Flags
-# parser = argparse.ArgumentParser()
-# parser.add_argument("--image_path", default="../../../examples/media/COCO_val2014_000000000241.jpg", help="Process an image. Read all standard formats (jpg, png, bmp, etc.).")
-# args = parser.parse_known_args()
 
 # Custom Params (refer to include/openpose/flags.hpp for more parameters)
 params = dict()
@@ -72,18 +69,6 @@ params["model_folder"] = "/home/boonyew/openpose/models/"
 params["hand"] = True
 params["hand_detector"] = 2
 params["body"] = 0
-
-# # Add others in path?
-# for i in range(0, len(args[1])):
-#     curr_item = args[1][i]
-#     if i != len(args[1])-1: next_item = args[1][i+1]
-#     else: next_item = "1"
-#     if "--" in curr_item and "--" in next_item:
-#         key = curr_item.replace('-','')
-#         if key not in params:  params[key] = "1"
-#     elif "--" in curr_item and "--" not in next_item:
-#         key = curr_item.replace('-','')
-#         if key not in params: params[key] = next_item
 
 # Construct it from system arguments
 # op.init_argv(args[1])
@@ -97,6 +82,8 @@ datum = op.Datum()
 
 def predict_keypoints(color_image,rect):
     imageToProcess = color_image
+    if rect is None:
+        rect = [100.,50.,400.,400.]
     handRectangles = [
         # Left/Right hands person 0
         [
@@ -108,7 +95,7 @@ def predict_keypoints(color_image,rect):
     # Create new datum
     
     datum.cvInputData = imageToProcess
-    # datum.handRectangles = handRectangles
+    datum.handRectangles = handRectangles
     
     # Process and display image
     opWrapper.emplaceAndPop([datum])
@@ -117,6 +104,7 @@ def predict_keypoints(color_image,rect):
     # print("Right hand keypoints: \n" + str(datum.handKeypoints[1]))
     # cv2.imshow("OpenPose 1.5.1 - Tutorial Python API", datum.cvOutputData)      
     return(datum.handKeypoints[1],datum.cvOutputData)
+
 def draw_pose(pose):
     img = np.zeros((480,640))
     sketch = [(0, 1), (1, 2), (2, 3), (3, 4), (0, 5), (5, 6), (6, 7), (7, 8),
@@ -167,11 +155,11 @@ def find3dpoints(cameras,threshold,undistort=False):
 
 def find3dpoint(cameras,threshold,img,jdx,undistort=False):
     """Find 3D coordinate using all data given
-    Implements a linear triangulation method to find a 3D
-    point. For example, see Hartley & Zisserman section 12.2
-    (p.312).
-    By default, this function will undistort 2D points before
-    finding a 3D point.
+        Implements a linear triangulation method to find a 3D
+        point. For example, see Hartley & Zisserman section 12.2
+        (p.312).
+        By default, this function will undistort 2D points before
+        finding a 3D point.
     """
     # for info on SVD, see Hartley & Zisserman (2003) p. 593 (see
     # also p. 587)
@@ -200,6 +188,7 @@ def find3dpoint(cameras,threshold,img,jdx,undistort=False):
             return True, X
     except:
         return False,0
+
 def calibrateCameras(align,device_manager,frames,chessboard_params):
 
     """
@@ -245,7 +234,7 @@ def calibrateCameras(align,device_manager,frames,chessboard_params):
     chessboard_points_cumulative_3d = np.delete(chessboard_points_cumulative_3d, 0, 1)
     roi_2D = get_boundary_corners_2D(chessboard_points_cumulative_3d)
 
-    print("Calibration completed... \nPlace the box in the field of view of the devices...")
+    print("Calibration completed... \nPlace your hand in the field of view of the devices...")
 
     return cameras
 
@@ -312,52 +301,61 @@ def run_demo():
         points = {}
         # Continue acquisition until terminated with Ctrl+C by the user
         while 1:
-             # Get the frames from all the devices
-                frames_devices, maps = device_manager.poll_frames(align)
-                # print(frames_devices)
+            # Get the frames from all the devices
+            frames_devices, maps = device_manager.poll_frames(align)
+            # print(frames_devices)
+            
+            # List collector for display
+            depth_color= []
+            color = []
+            devices = [i for i in maps]
+            devices.sort()
+            
+            for i in devices:
+                # 1. Get depth map and colorize
+                temp = maps[i]['depth']
+                depth_list.setdefault(i,[])
+                depth_list[i].append(np.array(temp))
+                depth_colormap = cv2.applyColorMap(cv2.convertScaleAbs(temp, alpha=0.03), cv2.COLORMAP_JET)
+                depth_color.append(depth_colormap)
                 
-                # List collector for display
-                depth_color= []
-                color = []
-                devices = [i for i in maps]
-                devices.sort()
                 
-                for i in devices:
-                    # 1. Get depth map and colorize
-                    temp = maps[i]['depth']
-                    depth_list.setdefault(i,[])
-                    depth_list[i].append(np.array(temp))
-                    depth_colormap = cv2.applyColorMap(cv2.convertScaleAbs(temp, alpha=0.03), cv2.COLORMAP_JET)
-                    depth_color.append(depth_colormap)
+                # 2. Run OpenPose detector on image
+                if FLAGS_USE_BBOX:
+                    box = bbox[i]
+                else:
+                    box = None
+                joints,img = predict_keypoints(maps[i]['color'],box)
+                
+                # 3. Save annotated color image for display
+                color.append(img)
+                
+                color_list.setdefault(i,[])
+                color_list[i].append(img)
+                
+                # 4. Save keypoints for that camera viewpoint
+                cameras[i][frame_id] = joints
+                
+                # 5. Save images to folder
+                if FLAGS_SAVE_IMGS:
                     cv2.imwrite('./images/depth_{}_{}.png'.format(i,frame_id),temp)
-                    
-                    # 2. Run OpenPose detector on image
-                    joints,img = predict_keypoints(maps[i]['color'],bbox[i])
-                    
-                    # 3. Save annotated color image for display
-                    color.append(img)
-                    
-                    color_list.setdefault(i,[])
-                    color_list[i].append(img)
                     cv2.imwrite('./images/color_{}_{}.png'.format(i,frame_id),img)
-                    # 4. Save keypoints for that camera viewpoint
-                    cameras[i][frame_id] = joints
 
-                #Triangulate 3d keypoints
-                points[frame_id] = find3dpoints(cameras,0.2,frame_id)
-                frame_id += 1    
-                images = np.vstack((np.hstack(color),np.hstack(depth_color)))
+            #Triangulate 3d keypoints
+            points[frame_id] = find3dpoints(cameras,0.2,frame_id)
+            frame_id += 1    
+            images = np.vstack((np.hstack(color),np.hstack(depth_color)))
 
-                # Show images for debugging
-                cv2.namedWindow('RealSense', cv2.WINDOW_AUTOSIZE)
-                cv2.imshow('RealSense', images)
-                key = cv2.waitKey(1)
-                
-                
-                # Press esc or 'q' to close the image window
-                if key & 0xFF == ord('q') or key == 27:
-                    cv2.destroyAllWindows()
-                    break
+            # Show images for debugging
+            cv2.namedWindow('RealSense', cv2.WINDOW_AUTOSIZE)
+            cv2.imshow('RealSense', images)
+            key = cv2.waitKey(1)
+            
+            
+            # Press esc or 'q' to close the image window
+            if key & 0xFF == ord('q') or key == 27:
+                cv2.destroyAllWindows()
+                break
 
     except KeyboardInterrupt:
         print("The program was interupted by the user. Closing the program...")
@@ -365,21 +363,11 @@ def run_demo():
     finally:
         device_manager.disable_streams()
         cv2.destroyAllWindows()
-        cam_pkl = open('cameras.pkl','wb')
-        pkl.dump(cameras,cam_pkl)
+        if FLAGS_SAVE_MATRIX:
+            cam_pkl = open('cameras.pkl','wb')
+            pkl.dump(cameras,cam_pkl)
         points_pkl = open('3dpoints.pkl','wb')
         pkl.dump(points,points_pkl)
-#        for i in keypoints:
-#            k = np.array(keypoints[i])
-#            np.save('joints_{}.npy'.format(i),k)
-#            print(k.shape)
-#            d = np.array(depth[i])
-#            c = np.array(color_list[i])
-#            np.save('depth_{}.npy'.format(i),d)
-#            print(d.shape)
-#            np.save('color_{}.npy'.format(i),c)
-#            print(c.shape)
-    
     
 if __name__ == "__main__":
     run_demo()

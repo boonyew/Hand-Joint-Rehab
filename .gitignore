@@ -11,3 +11,11 @@ images
 *.hdf5
 *.pkl
 *npy
+*.pcd
+*.ply
+*.png
+
+# WIP Scripts
+pointcloud_test.py
+opencv_pointcloud_viewer.py
+pctest.mlp
