@@ -32,7 +32,7 @@ There are three steps involved in using this system: **1. Camera Calibration** a
 In order to start using the tool, open a terminal in the `multicam` folder and run the following command:
 `python3 openpose_multiview.py`. 
 
-By default, the flags for recording the RGB and Depth and hand bounding boxes are turned off. In order to enable them, run the following command: `python3 openpose_multiview.py y y`
+By default, the flags for recording the RGB and Depth and hand bounding boxes are turned off. In order to enable them, run the following command: `python3 openpose_multiview.py y y` or change FLAGS_SAVE_IMGS and FLAGS_USE_BBOX to `True`.
 
 The details of the steps involved are discussed below.
 
@@ -61,13 +61,13 @@ At times the calibration process may fail to estimate the camera parameters, you
 
 ## 3.2 2D Hand Keypoint Detection
 
-The 2D hand keypoint detection is done using the OpenPose detector models for each of the RGB images retreived from the camera. By default, the bounding box supplied is a square box in the center of the image. For best results, the cameras can be adjusted to ensure that the hand is in the middle of each of the images captured by the cameras.
+The 2D hand keypoint detection is done using the OpenPose detector models for each of the RGB images retreived from the camera. By default, the bounding box supplied is a square box in the center of the image. For best results, the cameras can be adjusted to ensure that the hand is in the middle of each of the images captured by the cameras. Depending on the camera setup, custom bounding boxes may provide much better performance. 
 
 To use custom bounding box coordinates:
 
 1. In order to supply new bounding box coordinates, the `FLAGS_USE_BBOX` argument has to be enabled by running `python3 openpose_multiview.py n y`
 
-2. The bounding box coordinates can by adding the respective coordinates to the `bbox` object:
+2. The bounding box coordinates can by adding the respective coordinates to the `bbox` object with the camera device ID/serial number:
 `bbox = {}`
 `bbox['821212062729'] = [155.,60.,350.,350.]`
 `bbox['851112060943'] = [100.,40.,350.,350.]`
