@@ -4,7 +4,7 @@
 
 # 1. Installation and Setup
 
-To use the OpenPose Multi-View triangulation tool, the official OpenPose system needs to be installed as well as the necessary Python API bindings. The system is also build for Intel RealSense cameras, which will require the RealSense drivers for Windows and Ubuntu/Other Linux distros. 
+To use the OpenPose Multi-View triangulation tool, the official OpenPose system needs to be installed as well as the necessary Python API bindings. The system is also build for Intel RealSense cameras, which will require the RealSense drivers for Windows and Ubuntu/Other Linux distros. For the calibration process, it uses a modified version of the Box Dimensioner example [here](https://github.com/IntelRealSense/librealsense/tree/master/wrappers/python/examples/box_dimensioner_multicam).
 
 ---
 ## 1.1 Install OpenPose
@@ -22,7 +22,7 @@ To use the OpenPose Multi-View triangulation tool, the official OpenPose system 
 
 The system requires at least two cameras to retrieve 3D points, but will work fine with a single camera for gathering 2D points. A printout of the chessboard.png for calibration is also required (A4 size should be good). An example of the layout of the cameras and chessboard printout is show below:
 
-
+![https://github.com/boonyew/Hand-Joint-Rehab/blob/master/multicam/samplesetupandoutput.jpg](https://github.com/boonyew/Hand-Joint-Rehab/blob/master/multicam/samplesetupandoutput.jpg)
 ---
 
 # 3. Usage
