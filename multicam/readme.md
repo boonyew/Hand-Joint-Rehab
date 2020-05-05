@@ -1,10 +1,12 @@
 # OpenPose Multi-View Hand Pose Triangulation
 
+---
 
 # 1. Installation and Setup
 
-To use the OpenPose Multi-View triangulation tool, the official OpenPose system needs to be installed as well as the necessary Python API bindings. The system is also build for Intel RealSense cameras, which will require the RealSense drivers for Windows and Ubuntu/Other Linux distros. 
+To use the OpenPose Multi-View triangulation tool, the official OpenPose system needs to be installed as well as the necessary Python API bindings. The system is also build for Intel RealSense cameras, which will require the RealSense drivers for Windows and Ubuntu/Other Linux distros. For the calibration process, it uses a modified version of the Box Dimensioner example [here](https://github.com/IntelRealSense/librealsense/tree/master/wrappers/python/examples/box_dimensioner_multicam).
 
+---
 ## 1.1 Install OpenPose
 
 1.  Install the OpenPose prerequisites, which can be found in the [prerequisites guide](https://github.com/CMU-Perceptual-Computing-Lab/openpose/blob/master/doc/prerequisites.md)
@@ -15,22 +17,28 @@ To use the OpenPose Multi-View triangulation tool, the official OpenPose system 
 1. Git clone the repository and run `cd ./Hand-Joint-Rehab/multicam`
 2. Install the required Python3 packages in `requirements.txt`
 
+---
 # 2. Environment Setup
 
 The system requires at least two cameras to retrieve 3D points, but will work fine with a single camera for gathering 2D points. A printout of the chessboard.png for calibration is also required (A4 size should be good). An example of the layout of the cameras and chessboard printout is show below:
 
-
+![https://github.com/boonyew/Hand-Joint-Rehab/blob/master/multicam/samplesetupandoutput.jpg](https://github.com/boonyew/Hand-Joint-Rehab/blob/master/multicam/samplesetupandoutput.jpg)
+---
 
 # 3. Usage
 
 There are three steps involved in using this system: **1. Camera Calibration** and **2. 2D Hand Keypoint Detection** and **3. 3D Keypoint Triangulation**. 
 
-In order to start using the tool, open a terminal in the `multicam` folder and run the following command:
+In order to start using the tool, first set the path in the `openpose_multiview.py` file to the correct OpenPose Python directory:
+`sys.path.append('/home/boonyew/openpose/build/python/');`. Open a terminal in the `multicam` folder and run the following command:
 `python3 openpose_multiview.py`. 
 
-By default, the flags for recording the RGB and Depth and hand bounding boxes are turned off. In order to enable them, run the following command: `python3 openpose_multiview.py y y`
+By default, the flags for recording the RGB and Depth and hand bounding boxes are turned off. In order to enable them, run the following command: `python3 openpose_multiview.py y y` or change FLAGS_SAVE_IMGS and FLAGS_USE_BBOX to `True`.
 
 The details of the steps involved are discussed below.
+
+---
+
 ## 3.1 Camera Calibration
 
 The objective of this step is to calibrate the RealSense cameras, and to retreive their transformation matrices which will be used in Step 3 where the multiple 2D points are triangulated. In this step, the chessboard piece has to be visible to the cameras.
@@ -45,7 +53,7 @@ During this step, the calibration process will continue until a satisfactory est
 `Calibration completed... 
 Place your hand in the field of view of the devices...`
 
-### 3.11 Troubleshooting
+### Troubleshooting
 
 At times the calibration process may fail to estimate the camera parameters, you can try the following methods to solve it:
 
@@ -54,17 +62,18 @@ At times the calibration process may fail to estimate the camera parameters, you
 
 ## 3.2 2D Hand Keypoint Detection
 
-The 2D hand keypoint detection is done using the OpenPose detector models for each of the RGB images retreived from the camera. By default, the bounding box supplied is a square box in the center of the image. For best results, the cameras can be adjusted to ensure that the hand is in the middle of each of the images captured by the cameras.
+The 2D hand keypoint detection is done using the OpenPose detector models for each of the RGB images retreived from the camera. By default, the bounding box supplied is a square box in the center of the image. For best results, the cameras can be adjusted to ensure that the hand is in the middle of each of the images captured by the cameras. Depending on the camera setup, custom bounding boxes may provide much better performance. 
 
 To use custom bounding box coordinates:
 
 1. In order to supply new bounding box coordinates, the `FLAGS_USE_BBOX` argument has to be enabled by running `python3 openpose_multiview.py n y`
 
-2. The bounding box coordinates can by adding the respective coordinates to the `bbox` object:
+2. The bounding box coordinates can by adding the respective coordinates to the `bbox` object with the camera device ID/serial number:
 `bbox = {}`
 `bbox['821212062729'] = [155.,60.,350.,350.]`
 `bbox['851112060943'] = [100.,40.,350.,350.]`
 `bbox['851112062097'] = [140.,25.,350.,350.]`
+The format of the bounding box coordinates is [x coordinate, y coordinate, width, height].
 
 ## 3.3 3D Keypoint Triangulation
 
