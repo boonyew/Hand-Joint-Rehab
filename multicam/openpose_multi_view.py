@@ -25,11 +25,11 @@ if len(sys.argv) != 3:
     print()
     print("Usage: python3 openpose_multiview.py save_imgs=y/n use_bbox=y/n save_matrix=y/n")
     print("Defaulting to preset values...")
-    FLAGS_SAVE_IMGS = False
+    FLAGS_SAVE_IMGS = True
     FLAGS_USE_BBOX = False
     FLAGS_SAVE_MATRIX = True
 else:
-    FLAGS_SAVE_IMGS = True if sys.argv[1] == "y" else False
+    FLAGS_SAVE_IMGS = True if sys.argv[1] == 'y' else False
     FLAGS_USE_BBOX = True if sys.argv[2] == 'y' else False
     FLAGS_SAVE_MATRIX = True if sys.argv[3] == 'y' else False
 
@@ -130,8 +130,8 @@ def find3dpoints_rt(cameras,threshold,img,undistort=False):
     for jdx in range(21):
         flag,points = find3dpoint(cameras,threshold,img,jdx)
         if flag:
-            points3d[img].append(points)
-    if len(points3d[img]) < 21:
+            points3d.append(points)
+    if len(points3d) < 21:
         points3d = 'Invalid Frame'
     else:
         points3d = np.array(points3d)
@@ -189,6 +189,19 @@ def find3dpoint(cameras,threshold,img,jdx,undistort=False):
     except:
         return False,0
 
+def show_img(cameras,device,frame_id,points):
+#    imgs = []
+#        rvec2,tvec2 =cv2.solvePnPRansac(test[frame],cameras[cams[cam]][frame][0][:,0:2],intrinsics,None)[1:3]
+    rvec = cv2.Rodrigues(cameras[device]['matrix'][0:3,0:3])[0]
+    tvec = cameras[device]['matrix'][0:3,3]
+    if points[frame_id] == 'Invalid Frame':
+        img = np.zeros((480,640))
+    else:
+        yp = cv2.projectPoints(objectPoints=points[frame_id],rvec=rvec,tvec=tvec,cameraMatrix=intrinsics,distCoeffs=None)[0]
+        img = draw_pose(yp[:,0,:])
+#    imgs.append(img)
+    return img
+
 def calibrateCameras(align,device_manager,frames,chessboard_params):
 
     """
@@ -228,6 +241,7 @@ def calibrateCameras(align,device_manager,frames,chessboard_params):
         cameras[device]={}
         cameras[device]['matrix'] = transformation_devices[device].pose_mat
         np.save('camera_matrix_{}'.format(str(device)),transformation_devices[device].pose_mat)
+        print(intrinsics)
         cameras[device]['proj'] = np.matmul(intrinsics,cameras[device]['matrix'][0:3,:])
     # Extract the bounds between which the object's dimensions are needed
     # It is necessary for this demo that the object's length and breath is smaller than that of the chessboard
@@ -342,9 +356,11 @@ def run_demo():
                     cv2.imwrite('./images/color_{}_{}.png'.format(i,frame_id),img)
 
             #Triangulate 3d keypoints
-            points[frame_id] = find3dpoints(cameras,0.2,frame_id)
+            points[frame_id] = find3dpoints_rt(cameras,0.2,frame_id)
+            proj_img = show_img(cameras,devices[0],frame_id,points)
             frame_id += 1    
             images = np.vstack((np.hstack(color),np.hstack(depth_color)))
+            # images = proj_img
 
             # Show images for debugging
             cv2.namedWindow('RealSense', cv2.WINDOW_AUTOSIZE)
