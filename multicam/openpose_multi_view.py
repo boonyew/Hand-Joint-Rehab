@@ -224,7 +224,7 @@ def calibrateCameras(align,device_manager,frames,chessboard_params):
         object_point = pose_estimator.get_chessboard_corners_in3d()
         calibrated_device_count = 0
         for device in device_manager._available_devices:
-            if not transformation_result_kabsch[device][0]:
+            if not transformation_result_kabsch[device][0] and transformation_result_kabsch[device][3] >= 0.005: # If device calibration is not successful, rmsd > threshold
                 print("Place the chessboard on the plane where the object needs to be detected..")
             else:
                 calibrated_device_count += 1
@@ -316,7 +316,7 @@ def run_demo():
         # Continue acquisition until terminated with Ctrl+C by the user
         while 1:
             # Get the frames from all the devices
-            frames_devices, maps = device_manager.poll_frames(align)
+            frames_devices, maps = device_manager.poll_frames(align,500)
             # print(frames_devices)
             
             # List collector for display

@@ -193,7 +193,7 @@ class DeviceManager:
             advanced_mode = rs.rs400_advanced_mode(device)
             advanced_mode.load_json(json_text)
 
-    def poll_frames(self,align):
+    def poll_frames(self,align,clipping_distance=300):
         """
         Poll for frames from the enabled Intel RealSense devices. This will return at least one frame from each device. 
         If temporal post processing is enabled, the depth stream is averaged over a certain amount of frames
@@ -224,8 +224,14 @@ class DeviceManager:
 
                     depth_image = np.asanyarray(aligned_depth_frame.get_data())
                     color_image = np.asanyarray(color_frame.get_data())
+
+                    grey_color = 153
+                    depth_image_3d = np.dstack((depth_image,depth_image,depth_image)) #depth image is 1 channel, color is 3 channels
+                    color_clip = np.where((depth_image_3d > clipping_distance) | (depth_image_3d <= 0), grey_color, color_image)
+
                     maps[serial]['depth'] = depth_image
                     maps[serial]['color'] = color_image
+                    maps[serial]['color_clip'] = color_clip
                     for stream in streams:
                         if (rs.stream.infrared == stream.stream_type()):
                             frame = frameset.get_infrared_frame(stream.stream_index())
