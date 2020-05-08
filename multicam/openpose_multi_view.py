@@ -11,12 +11,14 @@ from sys import platform
 import argparse
 import time
 import pickle as pkl
+import time
 
 # Import helper functions and classes written to wrap the RealSense, OpenCV and Kabsch Calibration usage
 from collections import defaultdict
 from realsense_device_manager import DeviceManager
 from calibration_kabsch import PoseEstimation
 from helper_functions import get_boundary_corners_2D
+from util import *
 
 # Import Openpose (Windows/Ubuntu/OSX)
 dir_path = os.path.dirname(os.path.realpath(__file__))
@@ -93,7 +95,6 @@ def predict_keypoints(color_image,rect):
     ]
     
     # Create new datum
-    
     datum.cvInputData = imageToProcess
     datum.handRectangles = handRectangles
     
@@ -104,103 +105,6 @@ def predict_keypoints(color_image,rect):
     # print("Right hand keypoints: \n" + str(datum.handKeypoints[1]))
     # cv2.imshow("OpenPose 1.5.1 - Tutorial Python API", datum.cvOutputData)      
     return(datum.handKeypoints[1],datum.cvOutputData)
-
-def draw_pose(pose):
-    img = np.zeros((480,640))
-    sketch = [(0, 1), (1, 2), (2, 3), (3, 4), (0, 5), (5, 6), (6, 7), (7, 8),
-                (0, 9), (9, 10), (10, 11), (11, 12), (0, 13), (13, 14), (14, 15), (15, 16),
-                (0, 17), (17, 18), (18, 19), (19, 20)]
-    idx = 0
-    #plt.figure()
-    for pt in pose:
-        cv2.circle(img, (int(pt[0]), int(pt[1])), 5, idx, -1)
-        #plt.scatter(pt[0], pt[1], pt[2])
-        idx = idx + 1
-    idx = 0
-    for x, y in sketch:
-        cv2.line(img, (int(pose[x, 0]), int(pose[x, 1])),
-                 (int(pose[y, 0]), int(pose[y, 1])), 5, 2)
-        idx = idx + 1
-    #plt.show()
-    return img
-
-def find3dpoints_rt(cameras,threshold,img,undistort=False):
-    points3d = []
-    cams = list(cameras.keys())
-    for jdx in range(21):
-        flag,points = find3dpoint(cameras,threshold,img,jdx)
-        if flag:
-            points3d.append(points)
-    if len(points3d) < 21:
-        points3d = 'Invalid Frame'
-    else:
-        points3d = np.array(points3d)
-    return points3d
-
-def find3dpoints(cameras,threshold,undistort=False):
-    points3d = {}
-    cams = list(cameras.keys())
-    frames = len(cameras[cams[0]].keys())-1
-    for img in range(frames-1):
-        points3d[img] = []
-        for jdx in range(21):
-            flag,points = find3dpoint(cameras,threshold,img,jdx)
-            if flag:
-                points3d[img].append(points)
-        if len(points3d[img]) >= 21:
-            points3d[img] = np.vstack(points3d[img])
-        else:
-            points3d[img] = 'Invalid Frame'
-    return points3d
-
-def find3dpoint(cameras,threshold,img,jdx,undistort=False):
-    """Find 3D coordinate using all data given
-        Implements a linear triangulation method to find a 3D
-        point. For example, see Hartley & Zisserman section 12.2
-        (p.312).
-        By default, this function will undistort 2D points before
-        finding a 3D point.
-    """
-    # for info on SVD, see Hartley & Zisserman (2003) p. 593 (see
-    # also p. 587)
-    # Construct matrices
-    A=[]
-    try:
-        for name in cameras:
-            cam = cameras[name]
-    #            if undistort:
-    #                xy = cam.undistort( [xy] )
-            Pmat = cam['proj']
-            row2 = Pmat[2,:]
-            x,y,c = cam[img][0][jdx]
-            if c >= threshold:
-                A.append( x*row2 - Pmat[0,:] )
-                A.append( y*row2 - Pmat[1,:] )
-
-        # Calculate best point
-        if len(A) < 4:
-    #        print('Invalid point')
-            return False,0
-        else:
-            A=np.array(A)
-            u,d,vt=np.linalg.svd(A)
-            X = vt[-1,0:3]/vt[-1,3] # normalize
-            return True, X
-    except:
-        return False,0
-
-def show_img(cameras,device,frame_id,points):
-#    imgs = []
-#        rvec2,tvec2 =cv2.solvePnPRansac(test[frame],cameras[cams[cam]][frame][0][:,0:2],intrinsics,None)[1:3]
-    rvec = cv2.Rodrigues(cameras[device]['matrix'][0:3,0:3])[0]
-    tvec = cameras[device]['matrix'][0:3,3]
-    if points[frame_id] == 'Invalid Frame':
-        img = np.zeros((480,640))
-    else:
-        yp = cv2.projectPoints(objectPoints=points[frame_id],rvec=rvec,tvec=tvec,cameraMatrix=intrinsics,distCoeffs=None)[0]
-        img = draw_pose(yp[:,0,:])
-#    imgs.append(img)
-    return img
 
 def calibrateCameras(align,device_manager,frames,chessboard_params):
 
@@ -314,59 +218,66 @@ def run_demo():
         frame_id = 0
         points = {}
         # Continue acquisition until terminated with Ctrl+C by the user
+        switch = True
         while 1:
             # Get the frames from all the devices
-            frames_devices, maps = device_manager.poll_frames(align,500)
-            # print(frames_devices)
-            
-            # List collector for display
-            depth_color= []
-            color = []
-            devices = [i for i in maps]
-            devices.sort()
-            
-            for i in devices:
-                # 1. Get depth map and colorize
-                temp = maps[i]['depth']
-                depth_list.setdefault(i,[])
-                depth_list[i].append(np.array(temp))
-                depth_colormap = cv2.applyColorMap(cv2.convertScaleAbs(temp, alpha=0.03), cv2.COLORMAP_JET)
-                depth_color.append(depth_colormap)
+            if switch:
+                frames_devices, maps = device_manager.poll_frames(align,500)
+                # print(frames_devices)
                 
+                # List collector for display
+                depth_color= []
+                color = []
+                devices = [i for i in maps]
+                devices.sort()
                 
-                # 2. Run OpenPose detector on image
-                if FLAGS_USE_BBOX:
-                    box = bbox[i]
-                else:
-                    box = None
-                joints,img = predict_keypoints(maps[i]['color'],box)
-                
-                # 3. Save annotated color image for display
-                color.append(img)
-                
-                color_list.setdefault(i,[])
-                color_list[i].append(img)
-                
-                # 4. Save keypoints for that camera viewpoint
-                cameras[i][frame_id] = joints
-                
-                # 5. Save images to folder
-                if FLAGS_SAVE_IMGS:
-                    cv2.imwrite('./images/depth_{}_{}.png'.format(i,frame_id),temp)
-                    cv2.imwrite('./images/color_{}_{}.png'.format(i,frame_id),img)
+                for i in devices:
+                    # 1. Get depth map and colorize
+                    temp = maps[i]['depth']
+                    depth_list.setdefault(i,[])
+                    depth_list[i].append(np.array(temp))
+                    depth_colormap = cv2.applyColorMap(cv2.convertScaleAbs(temp, alpha=0.03), cv2.COLORMAP_JET)
+                    depth_color.append(depth_colormap)
+                    
+                    
+                    # 2. Run OpenPose detector on image
+                    if FLAGS_USE_BBOX:
+                        box = bbox[i]
+                    else:
+                        box = None
+                    joints,img = predict_keypoints(maps[i]['color'],box)
+                    
+                    # 3. Save annotated color image for display
+                    color.append(img)
+                    
+                    color_list.setdefault(i,[])
+                    color_list[i].append(img)
+                    
+                    # 4. Save keypoints for that camera viewpoint
+                    cameras[i][frame_id] = joints
+                    
+                    # 5. Save images to folder
+                    if FLAGS_SAVE_IMGS:
+                        cv2.imwrite('./images/depth_{}_{}.png'.format(i,frame_id),temp)
+                        cv2.imwrite('./images/color_{}_{}.png'.format(i,frame_id),img)
 
-            #Triangulate 3d keypoints
-            points[frame_id] = find3dpoints_rt(cameras,0.2,frame_id)
-            proj_img = show_img(cameras,devices[0],frame_id,points)
-            frame_id += 1    
-            images = np.vstack((np.hstack(color),np.hstack(depth_color)))
-            # images = proj_img
+                #Triangulate 3d keypoints
+                points[frame_id] = find3dpoints_rt(cameras,0.2,frame_id)
+                proj_img = show_img(cameras,devices[0],frame_id,points)
+                frame_id += 1    
+                images = np.vstack((np.hstack(color),np.hstack(depth_color)))
+                # images = proj_img
 
-            # Show images for debugging
+                # Show images for debugging
             cv2.namedWindow('RealSense', cv2.WINDOW_AUTOSIZE)
             cv2.imshow('RealSense', images)
+
             key = cv2.waitKey(1)
             
+            if key == 32:
+                switch = not(switch)
+            else:
+                continue
             
             # Press esc or 'q' to close the image window
             if key & 0xFF == ord('q') or key == 27:
