@@ -379,7 +379,7 @@ def lrSchedule(epoch):
 
 LRScheduler     = LearningRateScheduler(lrSchedule)
 
-modelname = 'msra_clstm_basic_120_P6'
+modelname = 'msra_clstm_basic_120_P3'
 filepath        = modelname + ".hdf5"
 checkpoint      = ModelCheckpoint(filepath, 
                                   monitor='val_loss', 

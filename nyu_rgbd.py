@@ -13,6 +13,7 @@ import h5py
 import sklearn.metrics as metrics
 import scipy.io as scio
 import random
+import pickle as pkl
 from tensorflow.keras.callbacks import ModelCheckpoint,CSVLogger,LearningRateScheduler
 from tensorflow.keras.models import Model,Sequential
 from tensorflow.keras.layers import Conv2D
@@ -64,6 +65,7 @@ depth_thres = 150
 width=640
 height=480
 select_joints = [0, 3, 6, 9, 12, 15, 18, 21, 24, 25, 27, 30, 31, 32]
+
 def pixel2world(x, fx, fy, ux, uy):
     """
         Converts coordinates from Image coordinates (xyz) to World coordinates (uvd)
@@ -132,7 +134,7 @@ def loadDepthMap(base_dir,base_labels,base_bbox,base_centers,idx,return_bbox=Fal
     left,right,top,bottom = base_bbox[idx,:]
     
     imCrop = imgdata.copy()[int(top):int(bottom), int(left):int(right)] # image crop
-    imCrop = img_rgb.copy()[int(top):int(bottom), int(left):int(right)]
+    imCrop_rgb = img_rgb.copy()[int(top):int(bottom), int(left):int(right)]
 
     imgResize = cv2.resize(imCrop, (cropWidth, cropHeight), interpolation=cv2.INTER_NEAREST)
     imgResize = np.asarray(imgResize,dtype = 'float32')
@@ -142,6 +144,9 @@ def loadDepthMap(base_dir,base_labels,base_bbox,base_centers,idx,return_bbox=Fal
 #    
     imgResize = (imgResize - int(center[2]))
     
+    imgResize_rgb = np.asarray(cv2.resize(imCrop_rgb, (cropWidth, cropHeight), 
+                                          interpolation=cv2.INTER_NEAREST),dtype = 'float32')
+    img_rgbd = np.dstack([imgResize,imgResize_rgb])
     # Normalize image
 #    r = np.max(imgResize) - np.min(imgResize)
 #    imgResize = imgResize - np.min(imgResize)
@@ -150,9 +155,9 @@ def loadDepthMap(base_dir,base_labels,base_bbox,base_centers,idx,return_bbox=Fal
     joints = resizeJoints(base_labels[:,idx,:].copy(),left,right,top,bottom,center)
     
     if return_bbox:
-        return imgResize,joints,img,(left,right,top,bottom)
+        return img_rgbd,joints,img,(left,right,top,bottom)
     else:
-        return imgResize, joints
+        return img_rgbd, joints
 
 def resizeJoints(joints,left,right,top,bottom,center):
     label_xy = np.ones((keypointsNumber, 3), dtype = 'float32') 
@@ -213,49 +218,55 @@ val_invalid_start = []
 for i in breaks:
     for y in range(1,5):
         val_invalid_start.append(i - y)
+#        
+#train_mean =0 
+#train_sd = 0
         
-train_mean =0 
-train_sd = 0
-train_imgs = []
-train_labels = []
-
-for idx in tqdm(range(1,kjoints.shape[1]+1)):
-    img,label = loadDepthMap(data_dir,kjoints,bbox,centers,idx)
-    mean_D = img.mean()
-    std_D = img.std()
-    train_mean += mean_D
-    train_sd += std_D
-    train_imgs.append(img)
-    train_labels.append(label)
-
-train_mean /= 72757
-train_sd /= 72757
-
-train_imgs = [(i-train_mean)/train_sd for i in train_imgs]
-
-test_mean = 0
-test_sd = 0 
-
-test_imgs = []
-test_labels = []
-
-for idx in tqdm(range(1,val_kjoints.shape[1]+1)):
-    img,label = loadDepthMap(val_dir,val_kjoints,val_bbox,val_centers,idx)
-    mean_D = img.mean()
-    std_D = img.std()
-    test_mean += mean_D
-    test_sd += std_D
-    test_imgs.append(img)
-    test_labels.append(label)
+#train_imgs = []
+#train_labels = []
+#
+#for idx in tqdm(range(1,kjoints.shape[1]+1)):
+#    img,label = loadDepthMap(data_dir,kjoints,bbox,centers,idx)
+##    mean_D = img.mean()
+##    std_D = img.std()
+##    train_mean += mean_D
+##    train_sd += std_D
+#    train_imgs.append(img)
+#    train_labels.append(label)
+#
+##train_mean /= 72757
+##train_sd /= 72757
+##
+##train_imgs = [(i-train_mean)/train_sd for i in train_imgs]
+##
+##test_mean = 0
+##test_sd = 0 
+#
+#test_imgs = []
+#test_labels = []
+#
+#for idx in tqdm(range(1,val_kjoints.shape[1]+1)):
+#    img,label = loadDepthMap(val_dir,val_kjoints,val_bbox,val_centers,idx)
+##    mean_D = img.mean()
+##    std_D = img.std()
+##    test_mean += mean_D
+##    test_sd += std_D
+#    test_imgs.append(img)
+#    test_labels.append(label)
     
-test_mean /= 8252
-test_sd /= 8252 
-test_imgs = [(i-test_mean)/test_sd for i in test_imgs]
+#test_mean /= 8252
+#test_sd /= 8252 
+#test_imgs = [(i-test_mean)/test_sd for i in test_imgs]
+
+train_imgs = pkl.load(open('nyu_train_imgs.pkl','rb'))
+train_labels = pkl.load(open('nyu_train_labels.pkl','rb'))
+test_imgs = pkl.load(open('nyu_test_imgs.pkl','rb'))
+test_labels = pkl.load(open('nyu_test_labels.pkl','rb'))
 
 # Debug code
 #
 #img,label = loadDepthMap(data_dir,kjoints,bbox,centers,6000)
-#plt.imshow(train_imgs[20000])
+#plt.imshow(img)
 #for x,y,z in np.reshape(train_labels[20000],(14,3)):
 #    plt.plot(x,y,color='green', marker='o')
 ###-------------------------------------------------------------------------------####
@@ -303,7 +314,7 @@ def generate_data(imgs,gtlabels,starts,frames,batch_size,val=False):
 #            print(len(batch_frames),file_idx,idx)
         image_batch = np.array(batch_frames)
         image_label = np.array(batch_labels)
-        image_batch = np.expand_dims(image_batch,4)
+#        image_batch = np.expand_dims(image_batch,4)
         
         yield image_batch,image_label
         
@@ -319,7 +330,7 @@ def generate_data(imgs,gtlabels,starts,frames,batch_size,val=False):
 
 def ConvModel():    
     model = Sequential()
-    model.add(Conv2D(16, (7,7), activation='relu', padding='same', input_shape=(cropHeight,cropWidth,1),kernel_initializer='he_normal',
+    model.add(Conv2D(16, (7,7), activation='relu', padding='same', input_shape=(cropHeight,cropWidth,2),kernel_initializer='he_normal',
                     kernel_regularizer=l2(1e-4)))
     model.add(BatchNormalization())
     model.add(MaxPooling2D(pool_size=(2, 2)))
@@ -354,7 +365,7 @@ optmz       = optimizers.Adam(lr=0.001)
 
 def LSTMModel():
     model = Sequential()
-    model.add(TimeDistributed(ConvModel(),input_shape=(frames,cropHeight, cropWidth,1)))
+    model.add(TimeDistributed(ConvModel(),input_shape=(frames,cropHeight, cropWidth,2)))
 #    model.add(LSTM(2048,
 #         return_sequences=True,
 #         dropout=0.25,
@@ -397,7 +408,7 @@ def lrSchedule(epoch):
 
 LRScheduler     = LearningRateScheduler(lrSchedule)
 
-modelname = 'nyu_clstm_basic_new'
+modelname = 'nyu_clstm_rgbd_new'
 filepath        = modelname + ".hdf5"
 checkpoint      = ModelCheckpoint(filepath, 
                                   monitor='val_loss', 
