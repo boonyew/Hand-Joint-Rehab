@@ -14,8 +14,11 @@ images
 *.pcd
 *.ply
 *.png
+*.txt
 
 # WIP Scripts
 pointcloud_test.py
 opencv_pointcloud_viewer.py
 pctest.mlp
+.vscode/settings.json
+multicam/cameras.pkl

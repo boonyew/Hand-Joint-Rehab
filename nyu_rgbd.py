@@ -32,7 +32,7 @@ from tensorflow.keras.regularizers import l2
 from tensorflow.keras import optimizers
 from tensorflow.compat.v1 import ConfigProto
 from tensorflow.compat.v1 import InteractiveSession
-
+from tensorflow.keras import backend as K
 config = ConfigProto()
 config.gpu_options.allow_growth = True
 session = InteractiveSession(config=config)
@@ -155,7 +155,7 @@ def loadDepthMap(base_dir,base_labels,base_bbox,base_centers,idx,return_bbox=Fal
     joints = resizeJoints(base_labels[:,idx,:].copy(),left,right,top,bottom,center)
     
     if return_bbox:
-        return img_rgbd,joints,img,(left,right,top,bottom)
+        return img_rgbd,joints,img,(left,right,top,bottom),center
     else:
         return img_rgbd, joints
 
@@ -174,7 +174,7 @@ def resizeJoints(joints,left,right,top,bottom,center):
     
     return labelOutputs
 
-def returnJoints(joints,left,right,top,bottom):
+def returnJoints(joints,left,right,top,bottom,center):
     label_xy = np.ones((keypointsNumber, 3), dtype = 'float32') 
     labelOutputs = np.ones((keypointsNumber, 3), dtype = 'float32') 
     label_xy[:,0] = (joints[:,0].copy()*(right - left)/cropWidth) + left 
@@ -182,7 +182,7 @@ def returnJoints(joints,left,right,top,bottom):
     
     labelOutputs[:,1] = label_xy[:,1]
     labelOutputs[:,0] = label_xy[:,0] 
-    labelOutputs[:,2] = joints[:,2]
+    labelOutputs[:,2] = joints[:,2]+ center[2]
     labelOutputs = np.asarray(labelOutputs).flatten()
     
     return labelOutputs
@@ -215,7 +215,7 @@ for i in breaks:
         
 val_breaks = [int(i.split('_')[2].rstrip()) for i in open(val_breaks_file)]
 val_invalid_start = [] 
-for i in breaks:
+for i in val_breaks:
     for y in range(1,5):
         val_invalid_start.append(i - y)
 #        
@@ -262,6 +262,19 @@ train_imgs = pkl.load(open('nyu_train_imgs.pkl','rb'))
 train_labels = pkl.load(open('nyu_train_labels.pkl','rb'))
 test_imgs = pkl.load(open('nyu_test_imgs.pkl','rb'))
 test_labels = pkl.load(open('nyu_test_labels.pkl','rb'))
+
+test_seqs = []
+temp_seq = []
+for idx in range(1,len(test_imgs)+1):
+    if idx in val_breaks:
+        test_seqs.append(temp_seq)
+        temp_seq = []
+        temp_seq.append(idx)
+    else:
+        temp_seq.append(idx)
+test_seqs.append(temp_seq)
+        
+    
 
 # Debug code
 #
@@ -362,6 +375,10 @@ seed        = 29
 np.random.seed(seed)
 optmz       = optimizers.Adam(lr=0.001)
                             # define the deep learning model
+def mean_joint(y_true,y_pred):
+    y_pred = K.reshape(y_pred, (140,3))
+    y_true = K.reshape(y_true, (140,3))
+    return K.mean(K.sum(abs(y_true-y_pred),axis=1))
 
 def LSTMModel():
     model = Sequential()
@@ -379,7 +396,7 @@ def LSTMModel():
     model.add(Bidirectional(LSTM(1024,dropout=0.5)))
     # model.add(Dense(256,activation='relu'))
     model.add(Dense(42,activation='relu'))
-    model.compile(loss='mse',
+    model.compile(loss=mean_joint,
                     optimizer=optmz,
                     metrics=['mse','mae'])
     return model
@@ -408,7 +425,7 @@ def lrSchedule(epoch):
 
 LRScheduler     = LearningRateScheduler(lrSchedule)
 
-modelname = 'nyu_clstm_rgbd_new'
+modelname = 'nyu_clstm_rgbd_new_fix'
 filepath        = modelname + ".hdf5"
 checkpoint      = ModelCheckpoint(filepath, 
                                   monitor='val_loss', 
@@ -431,98 +448,86 @@ model.fit_generator(
     steps_per_epoch=(72572-frames)//batch_size,
     verbose=True,
     callbacks=callbacks_list)
-#
-#def test_model():
-#    modelGo=LSTMModel()
-#    modelGo.load_weights(filepath)
-#    modelGo.compile(loss='mse', 
-#                    optimizer=optmz, 
-#                    metrics=['mse','mae'])
-#    val_files,val_labels=loadPaths(val_dir)
-#    seqs = val_files['P8']
-#    test_imgs = []
-#    test_labels = []
-#    for i in seqs:
-#        imgs = [loadDepthMap(data_dir,'P8',i,x,labels) for x in seqs[i]]
-#        imgs, xlabels = zip(*test_imgs)
-#        test_imgs.append(imgs)
-#        test_labels.append(xlabel)
-#    test_imgs = np.array(test_imgs)
-#    test_labels = np.array(test_labels)
 
-    # test_paths = files['P0']['1']
-    # test_imgs = [loadDepthMap('P0','1',i) for i in test_paths]
-    # imgs, xlabels = zip(*test_imgs)
-    # imgs = np.array(imgs)
-    # xlabels = np.array(xlabels)
-    # plt.imshow(imgs[2])
-    # for x,y,z in np.reshape(xlabels[2],(21,3)):
-    #    plt.plot(x,y,color='green', marker='o')
-#
-#def loadModel(modelpath):
-#    modelGo=LSTMModel()
-#    modelGo.load_weights(modelpath)
-#    modelGo.compile(loss='mse', 
-#                    optimizer=optmz, 
-#                    metrics=['mse','mae'])
-#    return modelGo
-#
-#def testPipeline(modelGo,imgs,gtlabels,idx):
-#    """
-#    Read a depth-map
-#    :param filename: file name to load
-#    :return: image data of depth image
-#    """
-#    batch_labels=[]
-#    seq_frames = []
-#    for i in range(frames):
-#        frame,label = imgs[idx+i],gtlabels[idx+i]
-#        seq_frames.append(frame)
-#        if i == frames-1:
-#            batch_labels.append(label)
-#            img = frame
-#            predict_image = frame
-#            left,right,top,bottom = val_bbox[idx+i,:]
+
+#### TEST SCRIPT####
+
+def loadModel(modelpath):
+    modelGo=LSTMModel()
+    modelGo.load_weights(modelpath)
+    modelGo.compile(loss=mean_joint, 
+                    optimizer=optmz, 
+                    metrics=['mse','mae'])
+    return modelGo
+
+def testPipeline(modelGo,imgs,gtlabels,seq,file_idx):
+    """
+    Read a depth-map
+    :param filename: file name to load
+    :return: image data of depth image
+    """
+    frames = 5
+#            print(len(batch_frames),sub_name,seq_name,file_idx)
+    seq_frames=[]
+    for i in range(frames):
+        if file_idx +i < 0:
+            file_id = 0
+        else:
+            file_id = file_idx +i 
+        frame_name = seq[file_id]
+        frame,label, a ,bbox,c = loadDepthMap(val_dir,val_kjoints,val_bbox,val_centers,frame_name,True)
+        seq_frames.append(frame)
+        if i == frames-1:
+            img = a
+#            img[np.where(img >= 1000)] =0
+            predict_image = frame
+            left,right,top,bottom = bbox
+            center = c
 #    seq_frames= np.expand_dims(np.array(seq_frames),3)
-#    seq_frames = np.expand_dims(seq_frames,0)
-#    predictions = modelGo.predict(seq_frames)
-#    predictions = predictions.reshape((keypointsNumber,3))
-#    predict_joints = returnJoints(predictions,left,right,top,bottom)
-#    gtlabel = returnJoints(np.array(label).reshape((14,3)),left,right,top,bottom)
-#    return img,predictions,np.array(label).reshape((14,3))
-#modelpath = 'nyu_clstm_basic.hdf5'
-#modelGo = loadModel(modelpath)
-##
-##predictions = modelGo.evaluate(generate_data(test_imgs,test_labels,frames,batch_size,True),steps=(8240-frames)//batch_size)
+    seq_frames = np.expand_dims(seq_frames,0)
+    predictions = modelGo.predict(seq_frames)
+    predictions = predictions.reshape((keypointsNumber,3))
+    predict_joints = returnJoints(predictions,left,right,top,bottom,center)
+    gtlabel = returnJoints(np.array(label).reshape((14,3)),left,right,top,bottom,center)
+    return img,predict_joints,gtlabel
 #
-#def testImg(modelGo,imgs,gtlabels,idx=0):
-#    
-#    x,y,truey = testPipeline(modelGo,imgs,gtlabels,idx)
-##    img = draw_pose(x,np.reshape(y,(16,3)))
-#    plt.imshow(x)
-#    for x,y1,z in np.reshape(y,(14,3)):
-#        plt.plot(x,y1,color='green', marker='o')
-#    for x,y1,z in np.reshape(truey,(14,3)):
-#        plt.plot(x,y1,color='red', marker='o')
-#    
-#testImg(modelGo,test_imgs,test_labels,7996)
+modelpath = './result/nyu_clstm_rgbd_new_fix.hdf5'
+modelGo = loadModel(modelpath)
 
+test_predict_labels = []
+gt_labels = []
 
-def draw_pose(input_img, pose):
-    # Palm, Thumb root, Thumb mid, Thumb tip, Index root, Index mid, Index tip, Middle root, Middle mid, Middle tip, Ring root, Ring mid, Ring tip, Pinky root, Pinky mid, Pinky tip.
-    img = input_img.copy()
-    sketch = [(0, 1), (1, 2), (2, 3), (0, 4), (4, 5), (5, 6), (0, 7),
-                (7, 8), (8, 9), (0, 10), (10, 11), (11, 12), (0, 13), (13, 14), (14, 15)]
-    idx = 0
-    #plt.figure()
-    for pt in pose:
-        cv2.circle(img, (int(pt[0]), int(pt[1])), 5, (0, 255, 0) , 1)
-        #plt.scatter(pt[0], pt[1], pt[2])
-        idx = idx + 1
-    idx = 0
-    for x, y in sketch:
-        cv2.line(img, (int(pose[x, 0]), int(pose[x, 1])),
-                 (int(pose[y, 0]), int(pose[y, 1])), (0, 255, 0), 2)
-        idx = idx + 1
-    #plt.show()
-    return img
+for seq in test_seqs:
+    seq_len = len(seq)
+    for idx in range(-4,seq_len-4):
+        x,y,truey = testPipeline(modelGo,test_imgs,test_labels,seq,idx)
+        test_predict_labels.append(y)
+        gt_labels.append(truey)
+np.savetxt('nyu_predict.txt',np.array(test_predict_labels),fmt='%.3f')
+
+from multicam.util import draw_pose,draw_angles
+
+x,y,truey = testPipeline(modelGo,test_imgs,test_labels,seq,100)
+img = draw_pose(y.reshape((14,3)),'nyu',np.array(x))
+plt.imshow(img)
+#cv2.imwrite('icvl7.png',img)
+
+test_predict_labels = np.array(test_predict_labels).reshape((1596,16,3))
+
+test_angles = []
+for i in test_predict_labels:
+    temp = list(util.draw_angles(i,'icvl').values())
+    test_angles.append(temp)
+
+test_angles = np.array(test_angles)
+
+gt_labels = np.array(gt_labels).reshape((1596,16,3))
+
+gt_angles = []
+for i in gt_labels:
+    temp = list(draw_angles(i,'nyu').values())
+    gt_angles.append(temp)
+
+gt_angles = np.array(gt_angles)
+
+np.mean(abs(test_angles - gt_angles))

@@ -30,7 +30,7 @@ from tensorflow.keras.regularizers import l2
 from tensorflow.keras import optimizers
 from tensorflow.compat.v1 import ConfigProto
 from tensorflow.compat.v1 import InteractiveSession
-
+from tensorflow.keras import backend as K
 config = ConfigProto()
 config.gpu_options.allow_growth = True
 session = InteractiveSession(config=config)
@@ -41,8 +41,8 @@ val_dir = r'/home/boonyew/Documents/ICVL/Testing/'
 center_file = os.path.join(data_dir,'center_train_refined.txt')
 label_file = os.path.join(data_dir,'labels.txt')
 
-test_center_file = os.path.join(val_dir,'center_test2.txt')
-test_label_file = os.path.join(val_dir,'test_seq_2.txt')
+test_center_file = os.path.join(val_dir,'center_test_refined.txt')
+test_label_file = os.path.join(val_dir,'test_seq_1.txt')
 #data_dir = r'C:\Users\angbo\Documents\MTech ISS\Capstone\HandJointRehab\ICVL'
 
 fx = 240.99
@@ -206,6 +206,12 @@ def returnJoints(joints,left,right,top,bottom,center):
 # Debug code
 files,filelists = loadAnnotations(label_file,center_file)
 test_files,test_filelists = loadAnnotations(test_label_file,test_center_file)
+
+#for idx in tqdm(range(1,kjoints.shape[1]+1)):
+#    img,label = loadDepthMap(data_dir,kjoints,bbox,centers,idx)
+
+
+
 #test_paths = test_files['200']['test_seq_1'].keys()
 #test_imgs = [loadDepthMap(test_files,val_dir,'200','test_seq_1',i) for i in list(test_paths)]
 #imgs, xlabels = zip(*test_imgs)
@@ -353,6 +359,11 @@ seed        = 29
 np.random.seed(seed)
 optmz       = optimizers.Adam(lr=0.001)
                             # define the deep learning model
+def mean_joint(y_true,y_pred):
+    y_pred = K.reshape(y_pred, (160,3))
+    y_true = K.reshape(y_true, (160,3))
+    return K.mean(K.sum(abs(y_true-y_pred),axis=1))
+
 
 def LSTMModel():
     model = Sequential()
@@ -370,7 +381,7 @@ def LSTMModel():
     model.add(Bidirectional(LSTM(1536,dropout=0.5)))
     # model.add(Dense(256,activation='relu'))
     model.add(Dense(48,activation='relu'))
-    model.compile(loss='mse',
+    model.compile(loss=mean_joint,
                     optimizer=optmz,
                     metrics=['mse','mae'])
     return model
@@ -399,7 +410,7 @@ def lrSchedule(epoch):
 
 LRScheduler     = LearningRateScheduler(lrSchedule)
 
-modelname = 'icvl_clstm_basic_120_new'
+modelname = 'icvl_clstm_basic_120_new_fix'
 filepath        = modelname + ".hdf5"
 checkpoint      = ModelCheckpoint(filepath, 
                                   monitor='val_loss', 
@@ -414,47 +425,22 @@ callbacks_list  = [checkpoint,csv_logger]
 
 batch_size = 10
 
-#model.fit_generator(
-#    generate_data(files,filelists,frames,batch_size),
-#    epochs=10,
-#    validation_data=generate_data_val(test_files,test_filelists,frames,batch_size),
-#    validation_steps=695//batch_size,
-#    steps_per_epoch=320000//batch_size,
-#    verbose=True,
-#    callbacks=callbacks_list)
-#
+model.fit_generator(
+    generate_data(files,filelists,frames,batch_size),
+    epochs=10,
+    validation_data=generate_data_val(test_files,test_filelists,frames,batch_size),
+    validation_steps=695//batch_size,
+    steps_per_epoch=320000//batch_size,
+    verbose=True,
+    callbacks=callbacks_list)
 
-#def test_model():
-#    modelGo=LSTMModel()
-#    modelGo.load_weights(filepath)
-#    modelGo.compile(loss='mse', 
-#                    optimizer=optmz, 
-#                    metrics=['mse','mae'])
-#    val_files,val_labels=loadPaths(val_dir)
-#    seqs = val_files['P8']
-#    test_imgs = []
-#    test_labels = []
-#    for i in seqs:
-#        imgs = [loadDepthMap(data_dir,'P8',i,x,labels) for x in seqs[i]]
-#        imgs, xlabels = zip(*test_imgs)
-#        test_imgs.append(imgs)
-#        test_labels.append(xlabel)
-#    test_imgs = np.array(test_imgs)
-#    test_labels = np.array(test_labels)
 
-    # test_paths = files['P0']['1']
-    # test_imgs = [loadDepthMap('P0','1',i) for i in test_paths]
-    # imgs, xlabels = zip(*test_imgs)
-    # imgs = np.array(imgs)
-    # xlabels = np.array(xlabels)
-    # plt.imshow(imgs[2])
-    # for x,y,z in np.reshape(xlabels[2],(21,3)):
-    #    plt.plot(x,y,color='green', marker='o')
+#### TEST SCRIPT####
 
 def loadModel(modelpath):
     modelGo=LSTMModel()
     modelGo.load_weights(modelpath)
-    modelGo.compile(loss='mse', 
+    modelGo.compile(loss=mean_joint, 
                     optimizer=optmz, 
                     metrics=['mse','mae'])
     return modelGo
@@ -481,12 +467,17 @@ def testPipeline(modelGo,base_dir,files,filelist,sub,seq,file_idx):
     seq_frames=[]
 #            print(len(batch_frames),sub_name,seq_name,file_idx)
     for i in range(frames):
-        frame_name = file_list[file_idx+i]
+        if file_idx +i < 0:
+            file_id = 0
+        else:
+            file_id = file_idx +i 
+        frame_name = file_list[file_id]
         frame,label, a ,bbox,c = loadDepthMap(files,base_dir,sub_name,seq_name,frame_name,True)
         seq_frames.append(frame)
         if i == frames-1:
             batch_labels.append(label)
             img = a
+            img[np.where(img >= 1000)] =0
             predict_image = frame
             left,right,top,bottom = bbox
             center = c
@@ -497,8 +488,8 @@ def testPipeline(modelGo,base_dir,files,filelist,sub,seq,file_idx):
     predict_joints = returnJoints(predictions,left,right,top,bottom,center)
     gtlabel = returnJoints(np.array(label).reshape((16,3)),left,right,top,bottom,center)
     return img,predict_joints,gtlabel
-
-modelpath = './result/icvl_clstm_basic_120_new.hdf5'
+#
+modelpath = './result/icvl_clstm_basic_120_new_fix.hdf5'
 modelGo = loadModel(modelpath)
 
 def testImg(modelGo,sub=0,seq=0,idx=0):
@@ -510,26 +501,47 @@ def testImg(modelGo,sub=0,seq=0,idx=0):
         plt.plot(x,y1,color='green', marker='o')
     for x,y1,z in np.reshape(truey,(16,3)):
         plt.plot(x,y1,color='red', marker='o')
-    
+
+test_predict_labels = []
+gt_labels = []
+for s in [('center_test_refined.txt','test_seq_1.txt'),('center_test2.txt','test_seq_2.txt')]:
+    test_center_file = os.path.join(val_dir,s[0])
+    test_label_file = os.path.join(val_dir,s[1])
+    test_files,test_filelists = loadAnnotations(test_label_file,test_center_file)
+    seq_len = len(test_filelists['200'][s[1].split('.')[0]])
+    for idx in range(-4,seq_len-4):
+        x,y,truey = testPipeline(modelGo,val_dir,test_files,test_filelists,0,0,idx)
+        test_predict_labels.append(y)
+        gt_labels.append(truey)
+np.savetxt('icvl_predict.txt',np.array(test_predict_labels),fmt='%.3f')
+
+from multicam.util import draw_pose,draw_angles
+
+x,y,truey = testPipeline(modelGo,val_dir,test_files,test_filelists,0,0,270)
+img = draw_pose(y.reshape((16,3)),'icvl',x)
+cv2.imwrite('icvl7.png',img)
+
+test_predict_labels = np.array(test_predict_labels).reshape((1596,16,3))
+
+test_angles = []
+for i in test_predict_labels:
+    temp = list(util.draw_angles(i,'icvl').values())
+    test_angles.append(temp)
+
+test_angles = np.array(test_angles)
+
+gt_labels = np.array(gt_labels).reshape((1596,16,3))
+
+gt_angles = []
+for i in gt_labels:
+    temp = list(util.draw_angles(i,'icvl').values())
+    gt_angles.append(temp)
+
+gt_angles = np.array(gt_angles)
+
+np.mean(abs(test_angles - gt_angles))
+
 #testImg(modelGo,0,0,150)
-
-modelGo.evaluate_generator(generate_data_val(test_files,test_filelists,frames,batch_size), steps=890//batch_size,verbose=1)
-
-def draw_pose(input_img, pose):
-    # Palm, Thumb root, Thumb mid, Thumb tip, Index root, Index mid, Index tip, Middle root, Middle mid, Middle tip, Ring root, Ring mid, Ring tip, Pinky root, Pinky mid, Pinky tip.
-    img = input_img.copy()
-    sketch = [(0, 1), (1, 2), (2, 3), (0, 4), (4, 5), (5, 6), (0, 7),
-                (7, 8), (8, 9), (0, 10), (10, 11), (11, 12), (0, 13), (13, 14), (14, 15)]
-    idx = 0
-    #plt.figure()
-    for pt in pose:
-        cv2.circle(img, (int(pt[0]), int(pt[1])), 5, (0, 255, 0) , 1)
-        #plt.scatter(pt[0], pt[1], pt[2])
-        idx = idx + 1
-    idx = 0
-    for x, y in sketch:
-        cv2.line(img, (int(pose[x, 0]), int(pose[x, 1])),
-                 (int(pose[y, 0]), int(pose[y, 1])), (0, 255, 0), 2)
-        idx = idx + 1
-    #plt.show()
-    return img
+#
+#modelGo.evaluate_generator(generate_data_val(test_files,test_filelists,frames,batch_size), steps=890//batch_size,verbose=1)
+##test_predict = modelGo.predict_generator(generate_data_val(test_files,test_filelists,frames,batch_size), steps=890//batch_size,verbose=1)

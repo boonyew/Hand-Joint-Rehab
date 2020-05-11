@@ -128,8 +128,10 @@ def calibrateCameras(align,device_manager,frames,chessboard_params):
         object_point = pose_estimator.get_chessboard_corners_in3d()
         calibrated_device_count = 0
         for device in device_manager._available_devices:
-            if not transformation_result_kabsch[device][0] and transformation_result_kabsch[device][3] >= 0.005: # If device calibration is not successful, rmsd > threshold
+            if not transformation_result_kabsch[device][0] and not transformation_result_kabsch[device][3]: # If device calibration is not successful, rmsd > threshold
                 print("Place the chessboard on the plane where the object needs to be detected..")
+            elif transformation_result_kabsch[device][3] >= 0.005:
+                print("RMSD Error more than 0.005m")
             else:
                 calibrated_device_count += 1
 
@@ -230,7 +232,7 @@ def run_demo():
                 color = []
                 devices = [i for i in maps]
                 devices.sort()
-                
+                project_depth = []
                 for i in devices:
                     # 1. Get depth map and colorize
                     temp = maps[i]['depth']
@@ -238,7 +240,7 @@ def run_demo():
                     depth_list[i].append(np.array(temp))
                     depth_colormap = cv2.applyColorMap(cv2.convertScaleAbs(temp, alpha=0.03), cv2.COLORMAP_JET)
                     depth_color.append(depth_colormap)
-                    
+                    project_depth.append((cameras[i]['matrix'],depth_colormap))
                     
                     # 2. Run OpenPose detector on image
                     if FLAGS_USE_BBOX:
@@ -263,7 +265,15 @@ def run_demo():
 
                 #Triangulate 3d keypoints
                 points[frame_id] = find3dpoints_rt(cameras,0.2,frame_id)
-                proj_img = show_img(cameras,devices[0],frame_id,points)
+                if points[frame_id] != 'Invalid Frame':
+                    depth_projected = []
+                    for img in project_depth:
+                        points2d = project_2d(img[0],points[frame_id])
+                        img_draw = draw_pose(points2d,'openpose',img[1],True,points[frame_id])
+                        depth_projected.append(img_draw)
+                        # print(img_draw.shape)
+                    depth_color = depth_projected
+                # proj_img = show_img(cameras,devices[0],frame_id,points)
                 frame_id += 1    
                 images = np.vstack((np.hstack(color),np.hstack(depth_color)))
                 # images = proj_img

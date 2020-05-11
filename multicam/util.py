@@ -6,10 +6,12 @@ import pickle as pkl
 import matplotlib.pyplot as plt
 import vg
 from enum import Enum
-
+intrinsics = np.array([[628.668,0.,311.662],
+                       [0.,628.668,231.571],
+                       [0.,  0.  ,1.]])
 def vec_from_points(p1,p2):
     v1 = []
-    for i in range(len(p1)):
+    for i in range(3):
         temp = p2[i] - p1[i]
         v1.append(temp)
     return np.array(v1)
@@ -25,7 +27,7 @@ def get_sketch_setting(dataset):
         return [(0, 1), (1, 2), (2, 3), (0, 4), (4, 5), (5, 6),
                 (0, 7), (7, 8), (8, 9), (0, 10), (10, 11), (11, 12),
                 (0, 13), (13, 14), (14, 15)]
-    elif dataset == 'nyu':
+    elif dataset == 'nyu': # select_joints = [0, 3, 6, 9, 12, 15, 18, 21, 24, 25, 27, 30, 31, 32]
         return [(0, 1), (2, 3), (4, 5), (6, 7), (8, 9), (9, 10), (1, 13),
                 (3, 13), (5, 13), (7, 13), (10, 13), (11, 13), (12, 13)]
     elif dataset == 'msra':
@@ -40,13 +42,10 @@ def get_sketch_setting(dataset):
 
 def get_angle_setting(dataset):
     if dataset == 'icvl':
-        return  {2:[1,3], 3:[2,4],5:[0,6], 6:[5,7], 7:[6,8], 9:[0,10],
-                10:[9,11],11:[10,12],13:[0,14],14:[13,15],15:[14,16],
-                17:[0,18],18:[17,19],19:[18,20]}
+        return  {2:[1,3], 4:[0,5],5:[4,6], 7:[0,8], 8:[7,9], 10:[0,11],
+                11:[10,12],13:[0,14],14:[13,15]}
     elif dataset == 'nyu':
-        return  {2:[1,3], 3:[2,4],5:[0,6], 6:[5,7], 7:[6,8], 9:[0,10],
-                10:[9,11],11:[10,12],13:[0,14],14:[13,15],15:[14,16],
-                17:[0,18],18:[17,19],19:[18,20]}        
+        return  {1:[0,13], 3:[2,13],5:[4,13], 7:[6,13], 9:[8,10], 10:[9,13]}        
     elif dataset == 'msra':
         return  {2:[1,3], 3:[2,4],5:[0,6], 6:[5,7], 7:[6,8], 9:[0,10],
                 10:[9,11],11:[10,12],13:[0,14],14:[13,15],15:[14,16],
@@ -172,18 +171,15 @@ def find3dpoint(cameras,threshold,img,jdx,undistort=False):
     except:
         return False,0
 
-def show_img(cameras,device,frame_id,points):
+def project_2d(matrix,points):
 #    imgs = []
 #        rvec2,tvec2 =cv2.solvePnPRansac(test[frame],cameras[cams[cam]][frame][0][:,0:2],intrinsics,None)[1:3]
-    rvec = cv2.Rodrigues(cameras[device]['matrix'][0:3,0:3])[0]
-    tvec = cameras[device]['matrix'][0:3,3]
-    if points[frame_id] == 'Invalid Frame':
-        img = np.zeros((480,640))
-    else:
-        yp = cv2.projectPoints(objectPoints=points[frame_id],rvec=rvec,tvec=tvec,cameraMatrix=intrinsics,distCoeffs=None)[0]
-        img = draw_pose(yp[:,0,:])
+    rvec = cv2.Rodrigues(matrix[0:3,0:3])[0]
+    tvec = matrix[0:3,3]
+    yp = cv2.projectPoints(objectPoints=points,rvec=rvec,tvec=tvec,cameraMatrix=intrinsics,distCoeffs=None)[0]
+    # print(yp.shape)
 #    imgs.append(img)
-    return img
+    return yp[:,0,:]
 
 def draw_angles(points,dataset):
     angle_joints = get_angle_setting(dataset)
@@ -193,30 +189,49 @@ def draw_angles(points,dataset):
             p1,p3 = angle_joints[idx]
             theta = find_angle(points[p1],pt,points[p3])
             angles[idx] = round(theta,1)
-            print(round(theta,1))
+            # print(round(theta,1))
     return angles
 
-def draw_pose(pose,points,dataset):
-    img = np.zeros((480,640))
+def draw_pose(points,dataset,img=None,return_angles=False,points3d=None):
+#    if not img:
+#        img = np.zeros((480,640))
     sketch = get_sketch_setting(dataset)
-    angles = draw_angles(points,dataset)
+    jt_color = get_joint_color(dataset)
+    line_color = get_sketch_color(dataset)
+    if return_angles:
+        # points = points if not points3d else points3d
+        angles = draw_angles(points3d,dataset)
+    pose = points[:,0:2]
     idx = 0
+    if len(img.shape) < 3:
+        img = np.dstack([img,img,img])
+        img = cv2.applyColorMap(cv2.convertScaleAbs(img, alpha=0.03), cv2.COLORMAP_JET)
+#    img = np.dstack([img,img,img])
     #plt.figure()
+    p = 0
     for pt in pose:
-        cv2.circle(img, (int(pt[0]), int(pt[1])), 5, idx, -1)
-        if idx in angles.keys():
-            cv2.putText(img,str(angles[idx]),(int(pt[0]), int(pt[1])),
-                        cv2.FONT_HERSHEY_SIMPLEX,
-                        0.3,
-                        (63,63,63),
-                        1,
-                        cv2.LINE_AA)
+        cv2.circle(img, (int(pt[0]), int(pt[1])), 2, jt_color[idx], -1)
+        if return_angles:
+            if idx in angles.keys():
+                cv2.putText(img,str(idx) + ": " + str(angles[idx]),(img.shape[1]-100, 20+p*15),
+                            cv2.FONT_HERSHEY_SIMPLEX,
+                            0.5,
+                            (0,0,0),
+                            1,
+                            cv2.LINE_AA)
+                cv2.putText(img,str(idx),(int(pt[0]), int(pt[1])),
+                            cv2.FONT_HERSHEY_SIMPLEX,
+                            0.5,
+                            (255,255,255),
+                            2,
+                            cv2.LINE_AA)
+                p+=1
         #plt.scatter(pt[0], pt[1], pt[2])
-        idx = idx + 1
+        idx += 1
     idx = 0
     for x, y in sketch:
         cv2.line(img, (int(pose[x, 0]), int(pose[x, 1])),
-                 (int(pose[y, 0]), int(pose[y, 1])), 5, 2)
+                 (int(pose[y, 0]), int(pose[y, 1])),line_color[idx], 2, 2)
         idx = idx + 1
     #plt.show()
     return img
