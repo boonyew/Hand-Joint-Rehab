@@ -14,7 +14,7 @@ archive
 *npy
 *.pcd
 *.ply
-*.png
+
 *.txt
 
 # WIP Scripts
