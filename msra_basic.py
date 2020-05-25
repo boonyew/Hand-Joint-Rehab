@@ -354,54 +354,54 @@ def LSTMModel():
                     optimizer=optmz,
                     metrics=['mse','mae'])
     return model
-
-model = LSTMModel()
-model.summary()
-
-def lrSchedule(epoch):
-    lr  = 1e-3
-    
-    if epoch > 10:
-        lr  *= 0.5e-3
-        
-    elif epoch > 8:
-        lr  *= 1e-3
-        
-    elif epoch > 6:
-        lr  *= 1e-2
-        
-    elif epoch > 4:
-        lr  *= 1e-1
-        
-    print('Learning rate: ', lr)
-    
-    return lr
-
-LRScheduler     = LearningRateScheduler(lrSchedule)
-
-modelname = 'msra_clstm_basic_120_P3'
-filepath        = modelname + ".hdf5"
-checkpoint      = ModelCheckpoint(filepath, 
-                                  monitor='val_loss', 
-                                  verbose=0, 
-                                  save_best_only=True, 
-                                  mode='min')
-
-                            # Log the epoch detail into csv
-csv_logger      = CSVLogger(modelname +'.csv')
-callbacks_list  = [checkpoint,csv_logger]
-
-
-batch_size = 10
-
-model.fit_generator(
-    generate_data(files,labels,frames,batch_size),
-    epochs=10,
-    validation_data=generate_data_val(val_files,val_labels,frames,batch_size,val=True),
-    validation_steps=17*(500-frames)//batch_size,
-    steps_per_epoch=7*17*(500-frames)//batch_size,
-    verbose=True,
-    callbacks=callbacks_list)
+#
+#model = LSTMModel()
+#model.summary()
+#
+#def lrSchedule(epoch):
+#    lr  = 1e-3
+#    
+#    if epoch > 10:
+#        lr  *= 0.5e-3
+#        
+#    elif epoch > 8:
+#        lr  *= 1e-3
+#        
+#    elif epoch > 6:
+#        lr  *= 1e-2
+#        
+#    elif epoch > 4:
+#        lr  *= 1e-1
+#        
+#    print('Learning rate: ', lr)
+#    
+#    return lr
+#
+#LRScheduler     = LearningRateScheduler(lrSchedule)
+#
+#modelname = 'msra_clstm_basic_120_P3'
+#filepath        = modelname + ".hdf5"
+#checkpoint      = ModelCheckpoint(filepath, 
+#                                  monitor='val_loss', 
+#                                  verbose=0, 
+#                                  save_best_only=True, 
+#                                  mode='min')
+#
+#                            # Log the epoch detail into csv
+#csv_logger      = CSVLogger(modelname +'.csv')
+#callbacks_list  = [checkpoint,csv_logger]
+#
+#
+#batch_size = 10
+#
+#model.fit_generator(
+#    generate_data(files,labels,frames,batch_size),
+#    epochs=10,
+#    validation_data=generate_data_val(val_files,val_labels,frames,batch_size,val=True),
+#    validation_steps=17*(500-frames)//batch_size,
+#    steps_per_epoch=7*17*(500-frames)//batch_size,
+#    verbose=True,
+#    callbacks=callbacks_list)
 #
 
 
@@ -451,36 +451,52 @@ def testPipeline(modelGo,base_dir,files,sub,seq,file_idx):
     gtlabel = returnJoints(np.array(label).reshape((keypointsNumber,3)),left,right,top,bottom)
     return img,predict_joints,gtlabel
 #
-#modelpath = './result/msra_clstm_basic_120_P6.hdf5'
-#model = loadModel(modelpath)
+modelpath = './result/msra_clstm_basic_120_P8.hdf5'
+modelGo = loadModel(modelpath)
 #
-#def testImg(modelGo,sub=0,seq=0,idx=0):
-#    val_files,val_labels,frames,batch_size,
-#    x,y,truey = testPipeline(modelGo,val_dir,val_files,sub,seq,idx)
+def testImg(modelGo,sub=0,seq=0,idx=0):
+    x,y,truey = testPipeline(modelGo,val_dir,val_files,sub,seq,idx)
+    
 #    plt.imshow(x)
 #    for x,y1,z in np.reshape(y,(21,3)):
 #        plt.plot(x,y1,color='green', marker='o')
 #    for x,y1,z in np.reshape(truey,(21,3)):
 #        plt.plot(x,y1,color='red', marker='o')
-#    
+test_predict_labels = []
+gt_labels = []
+for idx,seq in enumerate(list(val_files['P8'].keys())):
+    for i in range(len(val_files['P8'][seq])-4):
+        x,y,truey = testPipeline(modelGo,val_dir,val_files,0,idx,i)
+        test_predict_labels.append(y)
+        gt_labels.append(truey)
+
+test_predict_labels = np.array(test_predict_labels).reshape((len(test_predict_labels),21,3))
+
+gt_labels = np.array(gt_labels).reshape((len(gt_labels),21,3))
+
+errors = np.mean(np.sum(abs(test_predict_labels-gt_labels),axis=2))
+print(test_predict_labels.shape)
+print(errors)
+    
+    
 #testImg(modelGo,0,0,200)
 
-def draw_pose(input_img, pose):
-    # Palm, Thumb root, Thumb mid, Thumb tip, Index root, Index mid, Index tip, Middle root, Middle mid, Middle tip, Ring root, Ring mid, Ring tip, Pinky root, Pinky mid, Pinky tip.
-    img = input_img.copy()
-    sketch = [(0, 1), (1, 2), (2, 3), (3, 4), (0, 5), (5, 6), (6, 7), (7, 8),
-                (0, 9), (9, 10), (10, 11), (11, 12), (0, 13), (13, 14), (14, 15), (15, 16),
-                (0, 17), (17, 18), (18, 19), (19, 20)]
-    idx = 0
-    #plt.figure()
-    for pt in pose:
-        cv2.circle(img, (int(pt[0]), int(pt[1])), 5, 5, -1)
-        #plt.scatter(pt[0], pt[1], pt[2])
-        idx = idx + 1
-    idx = 0
-    for x, y in sketch:
-        cv2.line(img, (int(pose[x, 0]), int(pose[x, 1])),
-                 (int(pose[y, 0]), int(pose[y, 1])), 5, 2)
-        idx = idx + 1
-    #plt.show()
-    return img
+#def draw_pose(input_img, pose):
+#    # Palm, Thumb root, Thumb mid, Thumb tip, Index root, Index mid, Index tip, Middle root, Middle mid, Middle tip, Ring root, Ring mid, Ring tip, Pinky root, Pinky mid, Pinky tip.
+#    img = input_img.copy()
+#    sketch = [(0, 1), (1, 2), (2, 3), (3, 4), (0, 5), (5, 6), (6, 7), (7, 8),
+#                (0, 9), (9, 10), (10, 11), (11, 12), (0, 13), (13, 14), (14, 15), (15, 16),
+#                (0, 17), (17, 18), (18, 19), (19, 20)]
+#    idx = 0
+#    #plt.figure()
+#    for pt in pose:
+#        cv2.circle(img, (int(pt[0]), int(pt[1])), 5, 5, -1)
+#        #plt.scatter(pt[0], pt[1], pt[2])
+#        idx = idx + 1
+#    idx = 0
+#    for x, y in sketch:
+#        cv2.line(img, (int(pose[x, 0]), int(pose[x, 1])),
+#                 (int(pose[y, 0]), int(pose[y, 1])), 5, 2)
+#        idx = idx + 1
+#    #plt.show()
+#    return img

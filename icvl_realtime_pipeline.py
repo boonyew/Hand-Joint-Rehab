@@ -14,15 +14,15 @@ from tensorflow.compat.v1 import InteractiveSession
 config = ConfigProto()
 config.gpu_options.allow_growth = True
 session = InteractiveSession(config=config)
-h5_path =  './result/icvl_clstm_basic_120_new.hdf5'
+h5_path =  './result/icvl_clstm_basic_120.hdf5'
 model = load_model(h5_path)
 model.summary()
 #icvl_net = cv2.dnn.readNetFromTensorflow('./new/model.pb')
-
+from multicam.util import *
 height = 480
 width= 640
-cropHeight = 120
-cropWidth = 120
+cropHeight = 176
+cropWidth = 176
 fx=628.668
 fy=628.668
 u0=311.662
@@ -154,45 +154,6 @@ def returnJoints(joints,bbox,center):
     
     return labelOutputs
 
-RED = (0, 0, 255)
-GREEN = (75, 255, 66)
-BLUE = (255, 0, 0)
-YELLOW = (17, 240, 244)
-PURPLE = (255, 255, 0)
-CYAN = (255, 0, 255)
-
-
-def get_sketch_color():
-    return [RED, RED, RED, GREEN, GREEN, GREEN,
-            BLUE, BLUE, BLUE, YELLOW, YELLOW, YELLOW,
-            PURPLE, PURPLE, PURPLE]
-
-def get_joint_color():
-    return [CYAN, RED, RED, RED, GREEN, GREEN, GREEN,
-            BLUE, BLUE, BLUE, YELLOW, YELLOW, YELLOW,
-            PURPLE, PURPLE, PURPLE]
-
-def draw_pose(img, pose):
-    # Palm, Thumb root, Thumb mid, Thumb tip, Index root, Index mid, Index tip, Middle root, Middle mid, Middle tip, Ring root, Ring mid, Ring tip, Pinky root, Pinky mid, Pinky tip.
-#    img = input_img.copy()
-    sketch = [(0, 1), (1, 2), (2, 3), (0, 4), (4, 5), (5, 6), (0, 7),
-                (7, 8), (8, 9), (0, 10), (10, 11), (11, 12), (0, 13), (13, 14), (14, 15)]
-    idx = 0
-    colors = get_sketch_color()
-    colors_joint = get_joint_color()
-    #plt.figure()
-    for pt in pose:
-        cv2.circle(img, (int(pt[0]), int(pt[1])), 10, colors_joint[idx] , 1)
-        #plt.scatter(pt[0], pt[1], pt[2])
-        idx = idx + 1
-    idx = 0
-    for x, y in sketch:
-        cv2.line(img, (int(pose[x, 0]), int(pose[x, 1])),
-                 (int(pose[y, 0]), int(pose[y, 1])), colors[idx], 2)
-        idx = idx + 1
-    #plt.show()
-    return img
-
 # Configure depth and color streams
 pipeline = rs.pipeline()
 config = rs.config()
@@ -282,7 +243,7 @@ try:
 
         # Apply colormap on depth image (image must be converted to 8-bit per pixel first)
         depth_colormap = cv2.applyColorMap(cv2.convertScaleAbs(depth_image, alpha=0.03), cv2.COLORMAP_JET)
-        depth_colormap = draw_pose(depth_colormap,joints)
+        depth_colormap = draw_pose(joints,'icvl',depth_colormap,return_angles=True,points3d=joints)
 
         # Stack both images horizontally
         # images = np.hstack((color_predict, depth_colormap))
