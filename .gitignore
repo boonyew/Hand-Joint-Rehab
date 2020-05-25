@@ -5,6 +5,7 @@ result
 npy
 *__pycache__
 images
+archive
 
 # Model files
 *.csv
