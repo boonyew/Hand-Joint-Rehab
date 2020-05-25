@@ -13,7 +13,21 @@ The training and testing scripts for the C-Bi-LSTM model can be found in the mai
 
 
 Overview of C-Bi-LSTM model:
-![https://github.com/boonyew/Hand-Joint-Rehab/blob/master/resources/lstm.jpg](https://github.com/boonyew/Hand-Joint-Rehab/blob/master/resources/lstm.jpg)
+![https://github.com/boonyew/Hand-Joint-Rehab/blob/master/resources/lstm.png](https://github.com/boonyew/Hand-Joint-Rehab/blob/master/resources/lstm.png)
 
-Demo of the model in realtime deployment: ![https://drive.google.com/open?id=1yz6WVNPYvl9xmOu9zmmbqvCSdcvmn55e](https://drive.google.com/open?id=1yz6WVNPYvl9xmOu9zmmbqvCSdcvmn55e)
+Demo of the model in realtime deployment: ![https://github.com/boonyew/Hand-Joint-Rehab/blob/master/resources/icvl_demo.gif](https://github.com/boonyew/Hand-Joint-Rehab/blob/master/resources/icvl_demo.gif)
 
+Sample predictions on ICVL and NYU dataset:
+
+![https://github.com/boonyew/Hand-Joint-Rehab/blob/master/resources/icvl1.png](https://github.com/boonyew/Hand-Joint-Rehab/blob/master/resources/icvl1.png)
+![https://github.com/boonyew/Hand-Joint-Rehab/blob/master/resources/icvl2.png](https://github.com/boonyew/Hand-Joint-Rehab/blob/master/resources/icvl2.png)
+![https://github.com/boonyew/Hand-Joint-Rehab/blob/master/resources/icvl4.png](https://github.com/boonyew/Hand-Joint-Rehab/blob/master/resources/icvl4.png)
+![https://github.com/boonyew/Hand-Joint-Rehab/blob/master/resources/icvl5.png](https://github.com/boonyew/Hand-Joint-Rehab/blob/master/resources/icvl5.png)
+![https://github.com/boonyew/Hand-Joint-Rehab/blob/master/resources/icvl6.png](https://github.com/boonyew/Hand-Joint-Rehab/blob/master/resources/icvl6.png)
+![https://github.com/boonyew/Hand-Joint-Rehab/blob/master/resources/icvl7.png](https://github.com/boonyew/Hand-Joint-Rehab/blob/master/resources/icvl7.png)
+![https://github.com/boonyew/Hand-Joint-Rehab/blob/master/resources/nyu1.png](https://github.com/boonyew/Hand-Joint-Rehab/blob/master/resources/nyu1.png)
+![https://github.com/boonyew/Hand-Joint-Rehab/blob/master/resources/nyu2.png](https://github.com/boonyew/Hand-Joint-Rehab/blob/master/resources/nyu2.png)
+![https://github.com/boonyew/Hand-Joint-Rehab/blob/master/resources/nyu3.png](https://github.com/boonyew/Hand-Joint-Rehab/blob/master/resources/nyu3.png)
+![https://github.com/boonyew/Hand-Joint-Rehab/blob/master/resources/nyu4.png](https://github.com/boonyew/Hand-Joint-Rehab/blob/master/resources/nyu4.png)
+![https://github.com/boonyew/Hand-Joint-Rehab/blob/master/resources/nyu5.png](https://github.com/boonyew/Hand-Joint-Rehab/blob/master/resources/nyu5.png)
+![https://github.com/boonyew/Hand-Joint-Rehab/blob/master/resources/nyu6.png](https://github.com/boonyew/Hand-Joint-Rehab/blob/master/resources/nyu6.png)
