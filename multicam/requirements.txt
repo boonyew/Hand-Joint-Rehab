@@ -3,4 +3,4 @@ opencv_python==4.2.0.32
 pyrealsense2==2.33.1.1388
 numpy==1.13.3
 pptk==0.1.0
-Pillow==7.1.1
+Pillow==9.0.1
